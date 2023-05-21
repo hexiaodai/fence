@@ -1,0 +1,14 @@
+Thank you for installing {{ .Chart.Name }}.
+
+Chart Information:
+    Chart Version: {{ .Chart.Version }}
+    App Version: {{ .Chart.AppVersion }}
+    Chart Name: {{ .Chart.Name }}
+    Chart Description: {{ .Chart.Description }}
+
+Release Information:
+    Release Name: {{ .Release.Name }}
+    Release Namespace: {{ .Release.Namespace }}
+
+Get the list of pods by executing:
+    $ kubectl get pods -n {{ .Release.Namespace }}

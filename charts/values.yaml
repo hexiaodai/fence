@@ -1,0 +1,32 @@
+deployment:
+  fence:
+    image:
+      repository: registry-1.docker.io/hejianmin/fence
+    imagePullPolicy: Always
+    resources:
+      limits:
+        cpu: 500m
+        memory: 128Mi
+      requests:
+        cpu: 10m
+        memory: 64Mi
+  fenceProxy:
+    image:
+      repository: registry-1.docker.io/hejianmin/fence-proxy
+    imagePullPolicy: Always
+    resources:
+      limits:
+        cpu: 500m
+        memory: 128Mi
+      requests:
+        cpu: 10m
+        memory: 64Mi
+  replicas: 1
+
+fence:
+  autoFence: true
+  probePort: 16021
+  logSourcePort: 8082
+
+istio:
+  namespace: istio-system

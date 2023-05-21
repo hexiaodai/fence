@@ -1,0 +1,81 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fence-proxy
+  namespace: {{ .Release.Namespace }}
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fence-proxy
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: fence-proxy
+spec:
+  replicas: {{ .Values.deployment.replicas }}
+  selector:
+    matchLabels:
+      app: fence-proxy
+  template:
+    metadata:
+      labels:
+        app: fence-proxy
+        sidecar.istio.io/inject: "true"
+      annotations:
+        sidecar.istio.io/bootstrapOverride: fence-accesslog-source
+        proxy.istio.io/config: |
+          holdApplicationUntilProxyStarts: true
+          proxyMetadata:
+            ISTIO_META_FENCE_APP:
+              FENCE_PROXY
+    spec:
+      containers:
+        - env:
+          - name: PROBE_PORT
+            value: {{ .Values.fence.probePort | quote }}
+          - name: ISTIO_NAMESPACE
+            value: {{ .Values.istio.namespace }}
+          - name: FENCE_NAMESPACE
+            value: {{ .Release.Namespace }}
+          name: fence-proxy
+          image: {{ .Values.deployment.fenceProxy.image.repository }}:{{ .Chart.AppVersion }}
+          imagePullPolicy: {{ .Values.deployment.fenceProxy.imagePullPolicy }}
+          resources:
+          {{- toYaml .Values.deployment.fenceProxy.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /
+              port: {{ .Values.fence.probePort }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: {{ .Values.fence.probePort }}
+            initialDelaySeconds: 15
+            periodSeconds: 20
+      serviceAccountName: fence-proxy
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: fence-proxy
+    service: fence-proxy
+  name: fence-proxy
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    app: fence-proxy
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: 80
+  - name: status-port
+    port: {{ .Values.fence.probePort }}
+    protocol: TCP
+    targetPort: {{ .Values.fence.probePort }}

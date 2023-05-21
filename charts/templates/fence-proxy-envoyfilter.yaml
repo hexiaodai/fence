@@ -1,0 +1,7 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: fence-proxy
+  namespace: {{ .Values.istio.namespace }}
+spec:
+  configPatches: []

@@ -1,0 +1,284 @@
+---
+# Source: fence/templates/fence-proxy.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fence-proxy
+  namespace: fence
+---
+# Source: fence/templates/fence.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fence
+  namespace: fence
+---
+# Source: fence/templates/fence-accesslog-source-configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fence-accesslog-source
+  namespace: fence
+data:
+  custom_bootstrap.json: |
+    {
+      "static_resources": {
+        "clusters": [{
+          "name": "fence-accesslog-source",
+          "type": "STRICT_DNS",
+          "connect_timeout": "5s",
+          "http2_protocol_options": {},
+          "dns_lookup_family": "V4_ONLY",
+          "load_assignment": {
+            "cluster_name": "fence-accesslog-source",
+            "endpoints": [{
+              "lb_endpoints": [{
+                "endpoint": {
+                  "address": {
+                    "socket_address": {
+                      "address": "fence.fence",
+                      "port_value": 8082
+                    }
+                  }
+                }
+              }]
+            }]
+          },
+          "respect_dns_ttl": true
+        }]
+      }
+    }
+---
+# Source: fence/templates/fence-rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: fence
+rules:
+  - apiGroups:
+      - '*'
+    resources:
+      - '*'
+    verbs:
+      - "*"
+  - nonResourceURLs:
+      - '*'
+    verbs:
+      - "*"
+---
+# Source: fence/templates/fence-rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: fence
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: fence
+subjects:
+  - kind: ServiceAccount
+    name: fence-proxy
+    namespace: fence
+  - kind: ServiceAccount
+    name: fence
+    namespace: fence
+---
+# Source: fence/templates/fence-proxy.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: fence-proxy
+    service: fence-proxy
+  name: fence-proxy
+  namespace: fence
+spec:
+  selector:
+    app: fence-proxy
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: 80
+  - name: status-port
+    port: 16021
+    protocol: TCP
+    targetPort: 16021
+---
+# Source: fence/templates/fence.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: fence
+    service: fence
+  name: fence
+  namespace: fence
+spec:
+  selector:
+    app: fence
+  type: ClusterIP
+  ports:
+  - name: status-port
+    port: 16021
+    protocol: TCP
+    targetPort: 16021
+  - name: log-source-port
+    port: 8082
+    protocol: TCP
+    targetPort: 8082
+---
+# Source: fence/templates/fence-proxy.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fence-proxy
+  namespace: fence
+  labels:
+    app: fence-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fence-proxy
+  template:
+    metadata:
+      labels:
+        app: fence-proxy
+        sidecar.istio.io/inject: "true"
+      annotations:
+        sidecar.istio.io/bootstrapOverride: fence-accesslog-source
+        proxy.istio.io/config: |
+          holdApplicationUntilProxyStarts: true
+          proxyMetadata:
+            ISTIO_META_FENCE_APP:
+              FENCE_PROXY
+    spec:
+      containers:
+        - env:
+          - name: PROBE_PORT
+            value: "16021"
+          - name: ISTIO_NAMESPACE
+            value: istio-system
+          - name: FENCE_NAMESPACE
+            value: fence
+          name: fence-proxy
+          image: registry-1.docker.io/hejianmin/fence-proxy:0.0.0-dev
+          imagePullPolicy: Always
+          resources:
+            limits:
+              cpu: 500m
+              memory: 128Mi
+            requests:
+              cpu: 10m
+              memory: 64Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 16021
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 16021
+            initialDelaySeconds: 15
+            periodSeconds: 20
+      serviceAccountName: fence-proxy
+---
+# Source: fence/templates/fence.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fence
+  namespace: fence
+  labels:
+    app: fence
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fence
+  template:
+    metadata:
+      labels:
+        app: fence
+    spec:
+      containers:
+        - env:
+          - name: PROBE_PORT
+            value: "16021"
+          - name: AUTO_FENCE
+            value: "true"
+          - name: ISTIO_NAMESPACE
+            value: istio-system
+          - name: FENCE_NAMESPACE
+            value: fence
+          - name: LOG_SOURCE_PORT
+            value: "8082"
+          name: fence
+          image: registry-1.docker.io/hejianmin/fence:0.0.0-dev
+          imagePullPolicy: Always
+          resources:
+            limits:
+              cpu: 500m
+              memory: 128Mi
+            requests:
+              cpu: 10m
+              memory: 64Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 16021
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 16021
+            initialDelaySeconds: 15
+            periodSeconds: 20
+      serviceAccountName: fence
+---
+# Source: fence/templates/fence-accesslog-envoyfilter.yaml
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: fence-accesslog
+  namespace: fence
+spec:
+  configPatches:
+    - applyTo: NETWORK_FILTER
+      match:
+        listener:
+          filterChain:
+            filter:
+              name: envoy.filters.network.http_connection_manager
+      patch:
+        operation: MERGE
+        value:
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+            access_log:
+              - name: envoy.access_loggers.http_grpc
+                typed_config:
+                  "@type": type.googleapis.com/envoy.extensions.access_loggers.grpc.v3.HttpGrpcAccessLogConfig
+                  common_config:
+                    grpc_service:
+                      envoy_grpc:
+                        cluster_name: fence-accesslog-source
+                    log_name: http_envoy_accesslog
+                    transport_api_version: V3
+  workloadSelector:
+    labels:
+      app: fence-proxy
+---
+# Source: fence/templates/fence-proxy-envoyfilter.yaml
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: fence-proxy
+  namespace: istio-system
+spec:
+  configPatches: []

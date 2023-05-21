@@ -1,0 +1,77 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fence
+  namespace: {{ .Release.Namespace }}
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fence
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: fence
+spec:
+  replicas: {{ .Values.deployment.replicas }}
+  selector:
+    matchLabels:
+      app: fence
+  template:
+    metadata:
+      labels:
+        app: fence
+    spec:
+      containers:
+        - env:
+          - name: PROBE_PORT
+            value: {{ .Values.fence.probePort | quote }}
+          - name: AUTO_FENCE
+            value: {{ .Values.fence.autoFence | quote }}
+          - name: ISTIO_NAMESPACE
+            value: {{ .Values.istio.namespace }}
+          - name: FENCE_NAMESPACE
+            value: {{ .Release.Namespace }}
+          - name: LOG_SOURCE_PORT
+            value: {{ .Values.fence.logSourcePort | quote }}
+          name: fence
+          image: {{ .Values.deployment.fence.image.repository }}:{{ .Chart.AppVersion }}
+          imagePullPolicy: {{ .Values.deployment.fence.imagePullPolicy }}
+          resources:
+          {{- toYaml .Values.deployment.fence.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /
+              port: {{ .Values.fence.probePort }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: {{ .Values.fence.probePort }}
+            initialDelaySeconds: 15
+            periodSeconds: 20
+      serviceAccountName: fence
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: fence
+    service: fence
+  name: fence
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    app: fence
+  type: ClusterIP
+  ports:
+  - name: status-port
+    port: {{ .Values.fence.probePort }}
+    protocol: TCP
+    targetPort: {{ .Values.fence.probePort }}
+  - name: log-source-port
+    port: {{ .Values.fence.logSourcePort }}
+    protocol: TCP
+    targetPort: {{ .Values.fence.logSourcePort }}
