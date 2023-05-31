@@ -91,6 +91,7 @@ func (r *ServiceReconciler) fetchPod(ctx context.Context, svc *corev1.Service) (
 	list := &corev1.PodList{}
 	if err := r.Client.List(ctx, list, &client.ListOptions{
 		LabelSelector: labels.Set(svc.Labels).AsSelector(),
+		Limit:         1,
 	}); err != nil {
 		return nil, fmt.Errorf("failed to list pod: %v", err)
 	}

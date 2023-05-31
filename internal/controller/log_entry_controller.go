@@ -120,6 +120,7 @@ func (l *LogEntry) fetchPod(nn types.NamespacedName) (*corev1.Pod, error) {
 	list := &corev1.PodList{}
 	if err := l.Client.List(context.Background(), list, &client.ListOptions{
 		LabelSelector: labels.Set(deploy.Labels).AsSelector(),
+		Limit:         1,
 	}); err != nil {
 		return nil, fmt.Errorf("failed to list pod: %v", err)
 	}
