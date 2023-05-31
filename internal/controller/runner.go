@@ -10,6 +10,7 @@ import (
 	"github.com/hexiaodai/fence/internal/log"
 	"github.com/hexiaodai/fence/internal/metric"
 	networkingv1alpha3 "istio.io/client-go/pkg/apis/networking/v1alpha3"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	uruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -49,6 +50,7 @@ func (r *Runner) Start(ctx context.Context) error {
 
 	scheme := runtime.NewScheme()
 	uruntime.Must(corev1.AddToScheme(scheme))
+	uruntime.Must(appsv1.AddToScheme(scheme))
 	uruntime.Must(networkingv1alpha3.AddToScheme(scheme))
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
