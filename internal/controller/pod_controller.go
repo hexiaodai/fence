@@ -63,7 +63,7 @@ func (r *PodReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ct
 		}
 	}
 
-	if !fenceIsEnabled(r.NamespaceCache, r.Config, instance) {
+	if !fenceIsEnabled(r.NamespaceCache, r.Config, instance) || !isInjectSidecar(instance) {
 		return ctrl.Result{}, nil
 	}
 

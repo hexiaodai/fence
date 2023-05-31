@@ -71,7 +71,7 @@ func (r *ServiceReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		return ctrl.Result{}, fmt.Errorf("failed to fetch pod: %v", err)
 	}
 
-	if !fenceIsEnabled(r.NamespaceCache, r.Config, pod) {
+	if !fenceIsEnabled(r.NamespaceCache, r.Config, pod) || !isInjectSidecar(pod) {
 		return ctrl.Result{}, nil
 	}
 
