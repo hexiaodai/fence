@@ -45,6 +45,15 @@ func fenceIsEnabled[T VarNamespace](namespace T, config iconfig.Fence, pod *core
 	return config.AutoFence || nsEnabled || svcEnabled
 }
 
+func isInjectSidecar(pod *corev1.Pod) bool {
+	for _, container := range pod.Spec.Containers {
+		if container.Name == "istio-proxy" {
+			return true
+		}
+	}
+	return false
+}
+
 func isSystemNamespace(config iconfig.Fence, targetNs string) bool {
 	include := map[string]struct{}{config.IstioNamespace: {}, config.FenceNamespace: {}, "kube-system": {}}
 	_, ok := include[targetNs]
