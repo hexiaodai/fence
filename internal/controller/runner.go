@@ -90,11 +90,14 @@ func (r *Runner) registerControllers(mgr ctrl.Manager) error {
 
 	sidecar := istio.NewSidecar(ipService, r.config)
 
+	resource := NewResource(mgr.GetClient(), sidecar, namespaceCache, r.config, mgr.GetScheme())
+
 	if err := NewServiceReconciler(func(sr *ServiceReconciler) {
 		sr.Client = mgr.GetClient()
 		sr.Scheme = mgr.GetScheme()
 		sr.Sidecar = sidecar
 		sr.NamespaceCache = namespaceCache
+		sr.Resource = resource
 		sr.Config = r.config
 	}).SetupWithManager(mgr); err != nil {
 		return err
@@ -105,6 +108,7 @@ func (r *Runner) registerControllers(mgr ctrl.Manager) error {
 		nr.Scheme = mgr.GetScheme()
 		nr.Sidecar = sidecar
 		nr.NamespaceCache = namespaceCache
+		nr.Resource = resource
 		nr.Config = r.config
 	}).SetupWithManager(mgr); err != nil {
 		return err
@@ -114,7 +118,7 @@ func (r *Runner) registerControllers(mgr ctrl.Manager) error {
 	if err := metricrunner.Start(context.Background()); err != nil {
 		return err
 	}
-	le := NewLogEntry(mgr.GetClient(), sidecar, namespaceCache, ipService, r.config)
+	le := NewLogEntry(mgr.GetClient(), sidecar, namespaceCache, ipService, resource, r.config)
 	metricrunner.RegisterHttpLogEntry(le)
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

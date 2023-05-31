@@ -18,7 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-type ServiceReconciler struct {
+type PodReconciler struct {
 	client.Client
 	Scheme         *runtime.Scheme
 	Config         config.Fence
@@ -28,16 +28,16 @@ type ServiceReconciler struct {
 	log            logr.Logger
 }
 
-type ServiceReconcilerOpts func(*ServiceReconciler)
+type PodReconcilerOpts func(*PodReconciler)
 
-func NewServiceReconciler(opts ...ServiceReconcilerOpts) *ServiceReconciler {
+func NewPodReconciler(opts ...PodReconcilerOpts) *PodReconciler {
 	logger, err := log.NewLogger()
 	if err != nil {
 		panic(err)
 	}
-	logger = logger.WithValues("Reconcile", "Service")
+	logger = logger.WithValues("Reconcile", "Pod")
 
-	r := &ServiceReconciler{
+	r := &PodReconciler{
 		log: logger,
 	}
 	for _, opt := range opts {
@@ -46,36 +46,36 @@ func NewServiceReconciler(opts ...ServiceReconcilerOpts) *ServiceReconciler {
 	return r
 }
 
-func (r *ServiceReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
+func (r *PodReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
 	if isSystemNamespace(r.Config, request.Namespace) {
 		return ctrl.Result{}, nil
 	}
 
-	r.log.WithName(request.Name).Info("service reconciling object", "namespaceName", request.NamespacedName)
+	r.log.WithName(request.Name).Info("pod reconciling object", "namespaceName", request.NamespacedName)
 
-	instance := &corev1.Service{}
+	instance := &corev1.Pod{}
 	if err := r.Client.Get(ctx, request.NamespacedName, instance); err != nil {
 		if errors.IsNotFound(err) {
 			r.log.Info("resource not found. ignoring since object must be deleted", "namespaceName", request.NamespacedName)
 			return ctrl.Result{}, nil
 		} else {
-			return ctrl.Result{}, fmt.Errorf("failed to get service: %v", err)
+			return ctrl.Result{}, fmt.Errorf("failed to get pod: %v", err)
 		}
 	}
 
-	pod, err := r.fetchPod(ctx, instance)
-	if err != nil {
-		if goerrors.Is(err, errFetchPodNotFound) || errors.IsNotFound(err) {
-			return ctrl.Result{}, nil
-		}
-		return ctrl.Result{}, fmt.Errorf("failed to fetch pod: %v", err)
-	}
-
-	if !fenceIsEnabled(r.NamespaceCache, r.Config, pod) {
+	if !fenceIsEnabled(r.NamespaceCache, r.Config, instance) {
 		return ctrl.Result{}, nil
 	}
 
-	if err := r.Resource.Refresh(ctx, instance); err != nil {
+	svc, err := r.fetchService(ctx, instance)
+	if err != nil {
+		if goerrors.Is(err, errFetchServiceNotFound) || errors.IsNotFound(err) {
+			return ctrl.Result{}, nil
+		}
+		return ctrl.Result{}, fmt.Errorf("failed to fetch service: %v", err)
+	}
+
+	if err := r.Resource.Refresh(ctx, svc); err != nil {
 		if errors.IsConflict(err) {
 			return ctrl.Result{Requeue: true}, nil
 		}
@@ -85,22 +85,22 @@ func (r *ServiceReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	return ctrl.Result{}, nil
 }
 
-var errFetchPodNotFound = fmt.Errorf("not found")
+var errFetchServiceNotFound = fmt.Errorf("not found")
 
-func (r *ServiceReconciler) fetchPod(ctx context.Context, svc *corev1.Service) (*corev1.Pod, error) {
-	list := &corev1.PodList{}
+func (r *PodReconciler) fetchService(ctx context.Context, pod *corev1.Pod) (*corev1.Service, error) {
+	list := &corev1.ServiceList{}
 	if err := r.Client.List(ctx, list, &client.ListOptions{
-		LabelSelector: labels.Set(svc.Labels).AsSelector(),
+		LabelSelector: labels.Set(pod.Labels).AsSelector(),
 	}); err != nil {
-		return nil, fmt.Errorf("failed to list pod: %v", err)
+		return nil, fmt.Errorf("failed to list service: %v", err)
 	}
 	if len(list.Items) == 0 {
-		return nil, errFetchPodNotFound
+		return nil, errFetchServiceNotFound
 	}
 	return &list.Items[0], nil
 }
 
-func (r *ServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *PodReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&corev1.Service{}).
 		Complete(r)

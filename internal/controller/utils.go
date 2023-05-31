@@ -10,7 +10,7 @@ type VarNamespace interface {
 	*corev1.Namespace | *cache.Namespace
 }
 
-func fenceIsEnabled[T VarNamespace](namespace T, config iconfig.Fence, svc *corev1.Service) bool {
+func fenceIsEnabled[T VarNamespace](namespace T, config iconfig.Fence, pod *corev1.Pod) bool {
 	var nsEnabled bool
 	switch any(namespace).(type) {
 	case *corev1.Namespace:
@@ -29,19 +29,19 @@ func fenceIsEnabled[T VarNamespace](namespace T, config iconfig.Fence, svc *core
 		if !ok {
 			return false
 		}
-		nsEnabled = nsc.IsEnabled(svc.Namespace)
-		if nsc.IsDisable(svc.Namespace) {
+		nsEnabled = nsc.IsEnabled(pod.Namespace)
+		if nsc.IsDisable(pod.Namespace) {
 			return false
 		}
 	default:
 		return false
 	}
-	// service
-	if svc.Labels[iconfig.SidecarFenceLabel] == iconfig.SidecarFenceValueDisable {
+	// pod
+	if pod.Labels[iconfig.SidecarFenceLabel] == iconfig.SidecarFenceValueDisable {
 		return false
 	}
 
-	svcEnabled := svc.Labels[iconfig.SidecarFenceLabel] == iconfig.SidecarFenceValueEnabled
+	svcEnabled := pod.Labels[iconfig.SidecarFenceLabel] == iconfig.SidecarFenceValueEnabled
 	return config.AutoFence || nsEnabled || svcEnabled
 }
 
