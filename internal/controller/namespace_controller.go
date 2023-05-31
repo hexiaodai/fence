@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	goerrors "errors"
 	"fmt"
 
 	"github.com/go-logr/logr"
@@ -23,6 +22,7 @@ type NamespaceReconciler struct {
 	Config         config.Fence
 	Sidecar        *istio.Sidecar
 	NamespaceCache *cache.Namespace
+	Resource       *Resource
 	log            logr.Logger
 }
 
@@ -60,41 +60,20 @@ func (r *NamespaceReconciler) Reconcile(ctx context.Context, request ctrl.Reques
 		}
 	}
 
-	if err := r.createSidecar(ctx, instance); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to createSidecar: %v", err)
+	svcList := &corev1.ServiceList{}
+	if err := r.Client.List(ctx, svcList, &client.ListOptions{Namespace: instance.Name}); err != nil && !errors.IsNotFound(err) {
+		return ctrl.Result{}, err
+	}
+
+	for _, svc := range svcList.Items {
+		if err := r.Resource.Refresh(ctx, &svc); err != nil {
+			if errors.IsConflict(err) {
+				return ctrl.Result{Requeue: true}, nil
+			}
+		}
 	}
 
 	return ctrl.Result{}, nil
-}
-
-func (r *NamespaceReconciler) createSidecar(ctx context.Context, ns *corev1.Namespace) error {
-	svcs := &corev1.ServiceList{}
-	if err := r.Client.List(ctx, svcs, &client.ListOptions{Namespace: ns.Name}); err != nil && !errors.IsNotFound(err) {
-		return err
-	}
-
-	for _, svc := range svcs.Items {
-		if !fenceIsEnabled(ns, r.Config, &svc) {
-			continue
-		}
-		sidecar, err := r.Sidecar.Generate(&svc)
-		if err != nil {
-			if goerrors.Is(err, istio.ErrNoLabelSelector) {
-				continue
-			}
-			r.log.Error(err, "failed to generate sidecar")
-			continue
-		}
-		if err := ctrl.SetControllerReference(&svc, sidecar, r.Scheme); err != nil {
-			r.log.Error(err, "failed to setControllerReference")
-			continue
-		}
-		if err := r.Client.Create(ctx, sidecar); err != nil && !errors.IsAlreadyExists(err) {
-			r.log.Error(err, "failed to create sidecar")
-			continue
-		}
-	}
-	return nil
 }
 
 func (r *NamespaceReconciler) SetupWithManager(mgr ctrl.Manager) error {
