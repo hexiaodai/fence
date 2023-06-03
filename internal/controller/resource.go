@@ -5,9 +5,11 @@ import (
 	goerrors "errors"
 	"fmt"
 
+	"github.com/go-logr/logr"
 	"github.com/hexiaodai/fence/internal/cache"
 	"github.com/hexiaodai/fence/internal/config"
 	iistio "github.com/hexiaodai/fence/internal/istio"
+	"github.com/hexiaodai/fence/internal/log"
 	networkingv1alpha3 "istio.io/client-go/pkg/apis/networking/v1alpha3"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -24,17 +26,33 @@ type Resource struct {
 	config         config.Fence
 	sidecar        *iistio.Sidecar
 	namespaceCache *cache.Namespace
+	log            logr.Logger
 }
 
 func NewResource(client client.Client, sidecar *iistio.Sidecar, namespaceCache *cache.Namespace, config config.Fence, scheme *runtime.Scheme) *Resource {
-	return &Resource{Client: client, sidecar: sidecar, namespaceCache: namespaceCache, config: config, scheme: scheme}
+	logger, err := log.NewLogger()
+	if err != nil {
+		panic(err)
+	}
+	logger = logger.WithValues("Resource", "Refresh")
+
+	return &Resource{
+		Client:         client,
+		sidecar:        sidecar,
+		namespaceCache: namespaceCache,
+		config:         config,
+		scheme:         scheme,
+		log:            logger,
+	}
 }
 
 func (r *Resource) Refresh(ctx context.Context, obj interface{}) error {
+	var nn string
 	switch v := obj.(type) {
 	case *corev1.Service:
 		svc := obj.(*corev1.Service)
-		nn := types.NamespacedName{Namespace: svc.Namespace, Name: svc.Name}
+		nn = types.NamespacedName{Namespace: svc.Namespace, Name: svc.Name}.String()
+		r.log.WithName(nn).Info("refreshing resources through Service", "function", "Refresh")
 		if err := r.BindPortToFence(ctx, svc.Spec.Ports); err != nil {
 			if errors.IsConflict(err) {
 				return err
@@ -52,27 +70,33 @@ func (r *Resource) Refresh(ctx context.Context, obj interface{}) error {
 		}
 	case *HTTPAccessLogEntryWrapper:
 		entry := obj.(*HTTPAccessLogEntryWrapper)
+		nn = entry.NamespacedName.String()
+		r.log.WithName(nn).Info("refreshing resources through HTTPAccessLog", "function", "Refresh")
 		if entry.DestinationService == Internal {
 			if err := r.AddDestinationServiceToSidecar(entry); err != nil {
-				return fmt.Errorf("failed to add destination service to sidecar, namespaceName: %v, error: %w", entry.NamespacedName, err)
+				return fmt.Errorf("failed to add destination service to sidecar, namespaceName: %v, error: %w", nn, err)
 			}
 		}
 		if entry.DestinationService == External {
 			if err := r.AddExternalServiceToEnvoyFilter(entry); err != nil {
-				return fmt.Errorf("failed to add external service to envoyFilter, namespaceName: %v, error: %w", entry.NamespacedName, err)
+				return fmt.Errorf("failed to add external service to envoyFilter, namespaceName: %v, error: %w", nn, err)
 			}
 		}
 	default:
 		return fmt.Errorf("unknown type %v", v)
 	}
-
+	r.log.WithName(nn).Info("refresh resources successfully", "function", "Refresh")
 	return nil
 }
 
 func (r *Resource) CreateSidecar(ctx context.Context, svc *corev1.Service) error {
+	nn := types.NamespacedName{Namespace: svc.Namespace, Name: svc.Name}
+	log := r.log.WithName(nn.String()).WithValues("function", "CreateSidecar")
+
 	sidecar, err := r.sidecar.Generate(svc)
 	if err != nil {
 		if goerrors.Is(err, iistio.ErrNoLabelSelector) {
+			log.Info("skip create sidecar", "error", err)
 			return nil
 		}
 		return err
@@ -80,55 +104,82 @@ func (r *Resource) CreateSidecar(ctx context.Context, svc *corev1.Service) error
 	if err := ctrl.SetControllerReference(svc, sidecar, r.scheme); err != nil {
 		return err
 	}
-	if err := r.Client.Create(context.Background(), sidecar); err != nil && !errors.IsAlreadyExists(err) {
+	if err := r.Client.Create(context.Background(), sidecar); err != nil {
+		if errors.IsAlreadyExists(err) {
+			log.Info("skip create sidecar", "error", err)
+			return nil
+		}
 		return err
 	}
+	log.Info("create sidecar successfully")
 	return nil
 }
 
 func (r *Resource) AddDestinationServiceToSidecar(entry *HTTPAccessLogEntryWrapper) error {
+	log := r.log.WithName(entry.NamespacedName.String()).WithValues("function", "AddDestinationServiceToSidecar")
+
 	found := &networkingv1alpha3.Sidecar{}
 	if err := r.Client.Get(context.Background(), entry.NamespacedName, found); err != nil {
 		if errors.IsNotFound(err) {
 			// TODO: create sidecar
-			// log.Info("resource not found. ignoring since object must be deleted", "namespaceName", nn)
+			log.Info("skip add destination to sidecar", "error", err)
 			return nil
 		}
-		return fmt.Errorf("failed to get sidecar, namespaceName %v, error %v", entry.Namespace, err)
+		return fmt.Errorf("failed to get sidecar, namespaceName %v, error %v", entry.NamespacedName.String(), err)
 	}
 
 	if err := r.sidecar.AddDestinationSvcToEgress(found, entry.HTTPAccessLogEntry); err != nil {
-		return fmt.Errorf("failed to add destination service to egress, namespaceName %v, error %v", entry.Namespace, err)
+		return fmt.Errorf("failed to add destination service to egress, namespaceName %v, error %v", entry.NamespacedName.String(), err)
 	}
-	return r.Client.Update(context.Background(), found)
+	if err := r.Client.Update(context.Background(), found); err != nil {
+		return err
+	}
+	log.Info("destination added successfully to sidecar")
+	return nil
 }
 
 func (r *Resource) AddServiceToEnvoyFilter(ctx context.Context, svc *corev1.Service) error {
+	nn := types.NamespacedName{Namespace: svc.Namespace, Name: svc.Name}
+	log := r.log.WithName(nn.String()).WithValues("function", "AddServiceToEnvoyFilter")
+
 	envoyFilter := &networkingv1alpha3.EnvoyFilter{}
 	if err := r.Client.Get(ctx, types.NamespacedName{Namespace: r.config.IstioNamespace, Name: "fence-proxy"}, envoyFilter); err != nil {
 		return err
 	}
 	iistio.MergeFenceProxyEnvoyFilter(&envoyFilter.Spec, svc)
-	return r.Client.Update(ctx, envoyFilter)
+	if err := r.Client.Update(ctx, envoyFilter); err != nil {
+		return err
+	}
+	log.Info("service added successfully to envoyFilter")
+	return nil
 }
 
 func (r *Resource) AddExternalServiceToEnvoyFilter(entry *HTTPAccessLogEntryWrapper) error {
 	nn := types.NamespacedName{Namespace: r.config.IstioNamespace, Name: "fence-proxy"}
+	log := r.log.WithName(nn.String()).WithValues("function", "AddExternalServiceToEnvoyFilter")
+
 	found := &networkingv1alpha3.EnvoyFilter{}
 	if err := r.Client.Get(context.Background(), nn, found); err != nil {
 		if errors.IsNotFound(err) {
-			// log.Info("resource not found. ignoring since object must be deleted", "namespaceName", nn)
+			log.Info("skip add external service to envoyFilter", "error", err)
 			return nil
 		}
-		return fmt.Errorf("failed to get envoyFilter, namespaceName %v, error %v", nn, err)
+		return fmt.Errorf("failed to get envoyFilter, namespaceName %v, error %v", nn.String(), err)
 	}
 	iistio.AddExternalServiceToRouteConfigUration(entry.Request.Authority, found)
-	return r.Client.Update(context.Background(), found)
+	if err := r.Client.Update(context.Background(), found); err != nil {
+		return err
+	}
+	log.Info("external service added successfully to envoyFilter")
+	return nil
 }
 
 func (r *Resource) BindPortToFence(ctx context.Context, sps []corev1.ServicePort) error {
+	nn := types.NamespacedName{Namespace: r.config.FenceNamespace, Name: "fence-proxy"}
+	log := r.log.WithName(nn.String()).WithValues("function", "BindPortToFence")
+
 	fenceProxySvc := &corev1.Service{}
-	if err := r.Client.Get(context.Background(), types.NamespacedName{Namespace: r.config.FenceNamespace, Name: "fence-proxy"}, fenceProxySvc); err != nil {
+	if err := r.Client.Get(context.Background(), nn, fenceProxySvc); err != nil {
 		return err
 	}
 	indexer := map[int32]struct{}{}
@@ -150,5 +201,9 @@ func (r *Resource) BindPortToFence(ctx context.Context, sps []corev1.ServicePort
 		}
 		fenceProxySvc.Spec.Ports = append(fenceProxySvc.Spec.Ports, sp)
 	}
-	return r.Client.Update(context.Background(), fenceProxySvc)
+	if err := r.Client.Update(context.Background(), fenceProxySvc); err != nil {
+		return err
+	}
+	log.Info("ports bind successfully to fence")
+	return nil
 }

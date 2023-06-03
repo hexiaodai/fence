@@ -45,6 +45,10 @@ func fenceIsEnabled[T VarNamespace](namespace T, config iconfig.Fence, pod *core
 	return config.AutoFence || nsEnabled || svcEnabled
 }
 
+func namespaceIsDisable(ns *corev1.Namespace) bool {
+	return ns.Labels[iconfig.SidecarFenceLabel] == iconfig.SidecarFenceValueDisable
+}
+
 func isInjectSidecar(pod *corev1.Pod) bool {
 	for _, container := range pod.Spec.Containers {
 		if container.Name == "istio-proxy" {

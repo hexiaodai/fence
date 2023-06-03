@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	goerrors "errors"
 	"fmt"
 	"net"
 	"strings"
@@ -13,10 +12,7 @@ import (
 	"github.com/hexiaodai/fence/internal/config"
 	iistio "github.com/hexiaodai/fence/internal/istio"
 	"github.com/hexiaodai/fence/internal/log"
-	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -28,6 +24,7 @@ type LogEntry struct {
 	namespaceCache *cache.Namespace
 	ipServiceCache *cache.IpService
 	resource       *Resource
+	scheme         *runtime.Scheme
 	config         config.Fence
 	log            logr.Logger
 }
@@ -45,42 +42,33 @@ const (
 	External
 )
 
-func NewLogEntry(client client.Client, sidecar *iistio.Sidecar, namespaceCache *cache.Namespace, ipServiceCache *cache.IpService, resource *Resource, config config.Fence) *LogEntry {
+func NewLogEntry(client client.Client, scheme *runtime.Scheme, sidecar *iistio.Sidecar, namespaceCache *cache.Namespace, ipServiceCache *cache.IpService, resource *Resource, config config.Fence) *LogEntry {
 	logger, err := log.NewLogger()
 	if err != nil {
 		panic(err)
 	}
 	logger = logger.WithValues("LogEntry", "StreamLogEntry")
 
-	return &LogEntry{Client: client, sidecar: sidecar, namespaceCache: namespaceCache, ipServiceCache: ipServiceCache, resource: resource, config: config, log: logger}
+	return &LogEntry{Client: client, scheme: scheme, sidecar: sidecar, namespaceCache: namespaceCache, ipServiceCache: ipServiceCache, resource: resource, config: config, log: logger}
 }
 
 func (l *LogEntry) StreamLogEntry(logEntrys []*data_accesslog.HTTPAccessLogEntry) {
 	for _, entry := range logEntrys {
 		nn, err := l.getNamespacedName(entry)
 		if err != nil {
-			l.log.Error(err, "failed to get sidecar namespaceName")
+			sourceIp, _ := l.ipServiceCache.FetchSourceIp(entry)
+			l.log.Error(err, "failed to get sidecar namespaceName", "source ip", sourceIp)
 			continue
 		}
+
+		log := l.log.WithName(nn.String())
 
 		if isSystemNamespace(l.config, nn.Namespace) {
+			log.V(5).Info("skip system namespace")
 			continue
 		}
 
-		l.log.WithName(nn.String()).Info("logEntry stream object")
-
-		pod, err := l.fetchPod(nn)
-		if err != nil {
-			if errors.IsNotFound(err) || goerrors.Is(err, errFetchPodNotFound) {
-				continue
-			}
-			l.log.Error(err, "failed to get pod", "namespaceName", nn)
-			continue
-		}
-
-		if !fenceIsEnabled(l.namespaceCache, l.config, pod) {
-			continue
-		}
+		log.V(5).Info("logEntry stream object")
 
 		entryWrapper := &HTTPAccessLogEntryWrapper{
 			DestinationService: l.destinationService(entry),
@@ -109,26 +97,6 @@ func (l *LogEntry) getNamespacedName(entry *data_accesslog.HTTPAccessLogEntry) (
 		return
 	}
 	return types.NamespacedName{Namespace: sourceSvc.Namespace, Name: sourceSvc.Name}, nil
-}
-
-func (l *LogEntry) fetchPod(nn types.NamespacedName) (*corev1.Pod, error) {
-	deploy := &appsv1.Deployment{}
-	if err := l.Client.Get(context.Background(), nn, deploy); err != nil {
-		return nil, fmt.Errorf("failed to get deployment: %v", err)
-	}
-
-	list := &corev1.PodList{}
-	if err := l.Client.List(context.Background(), list, &client.ListOptions{
-		LabelSelector: labels.Set(deploy.Labels).AsSelector(),
-		Limit:         1,
-	}); err != nil {
-		return nil, fmt.Errorf("failed to list pod: %v", err)
-	}
-	if len(list.Items) == 0 {
-		return nil, errFetchPodNotFound
-	}
-
-	return &list.Items[0], nil
 }
 
 func (l *LogEntry) destinationService(entry *data_accesslog.HTTPAccessLogEntry) DestinationService {

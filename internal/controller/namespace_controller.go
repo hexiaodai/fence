@@ -48,19 +48,28 @@ func NewNamespaceReconciler(opts ...NamespaceReconcilerOpts) *NamespaceReconcile
 }
 
 func (r *NamespaceReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
+	log := r.log.WithName(request.Name)
+
+	log.V(5).Info("namespace reconciling object")
+
 	if isSystemNamespace(r.Config, request.Name) {
+		log.V(5).Info("skip system namespace")
 		return ctrl.Result{}, nil
 	}
-	r.log.WithName(request.Name).Info("namespace reconciling object", "name", request.Name)
 
 	instance := &corev1.Namespace{}
 	if err := r.Client.Get(ctx, request.NamespacedName, instance); err != nil {
 		if errors.IsNotFound(err) {
-			r.log.Info("resource not found. ignoring since object must be deleted", "namesapceName", request.NamespacedName)
+			log.V(5).Info("resource not found. ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		} else {
 			return ctrl.Result{}, fmt.Errorf("failed to get namespace: %v", err)
 		}
+	}
+
+	if namespaceIsDisable(instance) {
+		log.V(5).Info("skip disabled namespace")
+		return ctrl.Result{}, nil
 	}
 
 	svcList := &corev1.ServiceList{}
@@ -72,12 +81,13 @@ func (r *NamespaceReconciler) Reconcile(ctx context.Context, request ctrl.Reques
 		nn := types.NamespacedName{Namespace: svc.Namespace, Name: svc.Name}
 		pod, err := r.fetchPod(ctx, &svc)
 		if err != nil {
-			if !goerrors.Is(err, errFetchPodNotFound) && !errors.IsNotFound(err) {
-				r.log.Error(err, "failed to fetch pod", "namespaceName", nn)
+			if !goerrors.Is(err, errNotFound) && !errors.IsNotFound(err) {
+				log.Error(err, "failed to fetch pod", "namespaceName", nn.String())
 			}
 			continue
 		}
-		if !fenceIsEnabled(r.NamespaceCache, r.Config, pod) || !isInjectSidecar(pod) {
+		if !fenceIsEnabled(r.NamespaceCache, r.Config, pod) && !isInjectSidecar(pod) {
+			log.V(5).Info("no fence enabled or no sidecar injected", "namespaceName", nn.String())
 			continue
 		}
 
@@ -94,13 +104,13 @@ func (r *NamespaceReconciler) Reconcile(ctx context.Context, request ctrl.Reques
 func (r *NamespaceReconciler) fetchPod(ctx context.Context, svc *corev1.Service) (*corev1.Pod, error) {
 	list := &corev1.PodList{}
 	if err := r.Client.List(ctx, list, &client.ListOptions{
-		LabelSelector: labels.Set(svc.Labels).AsSelector(),
+		LabelSelector: labels.Set(svc.Spec.Selector).AsSelector(),
 		Limit:         1,
 	}); err != nil {
 		return nil, fmt.Errorf("failed to list pod: %v", err)
 	}
 	if len(list.Items) == 0 {
-		return nil, errFetchPodNotFound
+		return nil, errNotFound
 	}
 	return &list.Items[0], nil
 }
