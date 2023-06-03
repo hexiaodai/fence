@@ -10,7 +10,6 @@ import (
 	"github.com/hexiaodai/fence/internal/log"
 	"github.com/hexiaodai/fence/internal/metric"
 	networkingv1alpha3 "istio.io/client-go/pkg/apis/networking/v1alpha3"
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	uruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -50,7 +49,6 @@ func (r *Runner) Start(ctx context.Context) error {
 
 	scheme := runtime.NewScheme()
 	uruntime.Must(corev1.AddToScheme(scheme))
-	uruntime.Must(appsv1.AddToScheme(scheme))
 	uruntime.Must(networkingv1alpha3.AddToScheme(scheme))
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
@@ -94,7 +92,7 @@ func (r *Runner) registerControllers(mgr ctrl.Manager) error {
 
 	resource := NewResource(mgr.GetClient(), sidecar, namespaceCache, r.config, mgr.GetScheme())
 
-	if err := NewServiceReconciler(func(sr *ServiceReconciler) {
+	if err := NewEndpointsReconciler(func(sr *EndpointsReconciler) {
 		sr.Client = mgr.GetClient()
 		sr.Scheme = mgr.GetScheme()
 		sr.Sidecar = sidecar
@@ -120,7 +118,7 @@ func (r *Runner) registerControllers(mgr ctrl.Manager) error {
 	if err := metricrunner.Start(context.Background()); err != nil {
 		return err
 	}
-	le := NewLogEntry(mgr.GetClient(), sidecar, namespaceCache, ipService, resource, r.config)
+	le := NewLogEntry(mgr.GetClient(), mgr.GetScheme(), sidecar, namespaceCache, ipService, resource, r.config)
 	metricrunner.RegisterHttpLogEntry(le)
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
