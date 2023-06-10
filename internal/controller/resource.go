@@ -4,6 +4,7 @@ import (
 	"context"
 	goerrors "errors"
 	"fmt"
+	"reflect"
 
 	"github.com/go-logr/logr"
 	"github.com/hexiaodai/fence/internal/cache"
@@ -52,7 +53,7 @@ func (r *Resource) Refresh(ctx context.Context, obj interface{}) error {
 	case *corev1.Service:
 		svc := obj.(*corev1.Service)
 		nn = types.NamespacedName{Namespace: svc.Namespace, Name: svc.Name}.String()
-		r.log.WithName(nn).Info("refreshing resources through Service", "function", "Refresh")
+		r.log.V(5).WithName(nn).Info("refreshing resources through Service", "function", "Refresh")
 		if err := r.BindPortToFence(ctx, svc.Spec.Ports); err != nil {
 			if errors.IsConflict(err) {
 				return err
@@ -71,7 +72,7 @@ func (r *Resource) Refresh(ctx context.Context, obj interface{}) error {
 	case *HTTPAccessLogEntryWrapper:
 		entry := obj.(*HTTPAccessLogEntryWrapper)
 		nn = entry.NamespacedName.String()
-		r.log.WithName(nn).Info("refreshing resources through HTTPAccessLog", "function", "Refresh")
+		r.log.V(5).WithName(nn).Info("refreshing resources through HTTPAccessLog", "function", "Refresh")
 		if entry.DestinationService == Internal {
 			if err := r.AddDestinationServiceToSidecar(entry); err != nil {
 				return fmt.Errorf("failed to add destination service to sidecar, namespaceName: %v, error: %w", nn, err)
@@ -96,7 +97,7 @@ func (r *Resource) CreateSidecar(ctx context.Context, svc *corev1.Service) error
 	sidecar, err := r.sidecar.Generate(svc)
 	if err != nil {
 		if goerrors.Is(err, iistio.ErrNoLabelSelector) {
-			log.Info("skip create sidecar", "error", err)
+			log.V(5).Info("skip create sidecar", "error", err)
 			return nil
 		}
 		return err
@@ -106,7 +107,7 @@ func (r *Resource) CreateSidecar(ctx context.Context, svc *corev1.Service) error
 	}
 	if err := r.Client.Create(context.Background(), sidecar); err != nil {
 		if errors.IsAlreadyExists(err) {
-			log.Info("skip create sidecar", "error", err)
+			log.V(5).Info("skip create sidecar", "error", err)
 			return nil
 		}
 		return err
@@ -122,7 +123,7 @@ func (r *Resource) AddDestinationServiceToSidecar(entry *HTTPAccessLogEntryWrapp
 	if err := r.Client.Get(context.Background(), entry.NamespacedName, found); err != nil {
 		if errors.IsNotFound(err) {
 			// TODO: create sidecar
-			log.Info("skip add destination to sidecar", "error", err)
+			log.V(5).Info("skip add destination to sidecar", "error", err)
 			return nil
 		}
 		return fmt.Errorf("failed to get sidecar, namespaceName %v, error %v", entry.NamespacedName.String(), err)
@@ -161,7 +162,7 @@ func (r *Resource) AddExternalServiceToEnvoyFilter(entry *HTTPAccessLogEntryWrap
 	found := &networkingv1alpha3.EnvoyFilter{}
 	if err := r.Client.Get(context.Background(), nn, found); err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("skip add external service to envoyFilter", "error", err)
+			log.V(5).Info("skip add external service to envoyFilter", "error", err)
 			return nil
 		}
 		return fmt.Errorf("failed to get envoyFilter, namespaceName %v, error %v", nn.String(), err)
@@ -182,8 +183,10 @@ func (r *Resource) BindPortToFence(ctx context.Context, sps []corev1.ServicePort
 	if err := r.Client.Get(context.Background(), nn, fenceProxySvc); err != nil {
 		return err
 	}
+	newsps := []corev1.ServicePort{}
 	indexer := map[int32]struct{}{}
 	for _, p := range fenceProxySvc.Spec.Ports {
+		newsps = append(newsps, p)
 		indexer[p.Port] = struct{}{}
 	}
 	for _, p := range sps {
@@ -199,8 +202,14 @@ func (r *Resource) BindPortToFence(ctx context.Context, sps []corev1.ServicePort
 			Port:       p.Port,
 			TargetPort: intstr.Parse(r.config.WormholePort),
 		}
-		fenceProxySvc.Spec.Ports = append(fenceProxySvc.Spec.Ports, sp)
+		newsps = append(newsps, sp)
 	}
+	if reflect.DeepEqual(newsps, fenceProxySvc.Spec.Ports) {
+		log.V(5).Info("skip bind port to fence, no port bind required")
+		return nil
+	}
+	fenceProxySvc.Spec.Ports = newsps
+
 	if err := r.Client.Update(context.Background(), fenceProxySvc); err != nil {
 		return err
 	}

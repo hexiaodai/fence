@@ -62,13 +62,12 @@ func (l *LogEntry) StreamLogEntry(logEntrys []*data_accesslog.HTTPAccessLogEntry
 		}
 
 		log := l.log.WithName(nn.String())
+		log.V(5).Info("logEntry stream object")
 
 		if isSystemNamespace(l.config, nn.Namespace) {
 			log.V(5).Info("skip system namespace")
 			continue
 		}
-
-		log.V(5).Info("logEntry stream object")
 
 		entryWrapper := &HTTPAccessLogEntryWrapper{
 			DestinationService: l.destinationService(entry),

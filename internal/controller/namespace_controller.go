@@ -49,7 +49,6 @@ func NewNamespaceReconciler(opts ...NamespaceReconcilerOpts) *NamespaceReconcile
 
 func (r *NamespaceReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
 	log := r.log.WithName(request.Name)
-
 	log.V(5).Info("namespace reconciling object")
 
 	if isSystemNamespace(r.Config, request.Name) {

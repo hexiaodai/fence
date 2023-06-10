@@ -1,7 +1,7 @@
 deployment:
   fence:
     image:
-      repository: registry-1.docker.io/hejianmin/fence
+      repository: hejianmin/fence
     imagePullPolicy: Always
     resources:
       limits:
@@ -12,7 +12,7 @@ deployment:
         memory: 64Mi
   fenceProxy:
     image:
-      repository: registry-1.docker.io/hejianmin/fence-proxy
+      repository: hejianmin/fence-proxy
     imagePullPolicy: Always
     resources:
       limits:
