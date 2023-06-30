@@ -49,42 +49,40 @@ func NewResource(client client.Client, sidecar *iistio.Sidecar, namespaceCache *
 
 func (r *Resource) Refresh(ctx context.Context, obj interface{}) error {
 	var nn string
-	switch v := obj.(type) {
+	switch value := obj.(type) {
 	case *corev1.Service:
-		svc := obj.(*corev1.Service)
-		nn = types.NamespacedName{Namespace: svc.Namespace, Name: svc.Name}.String()
+		nn = types.NamespacedName{Namespace: value.Namespace, Name: value.Name}.String()
 		r.log.V(5).WithName(nn).Info("refreshing resources through Service", "function", "Refresh")
-		if err := r.BindPortToFence(ctx, svc.Spec.Ports); err != nil {
+		if err := r.BindPortToFence(ctx, value.Spec.Ports); err != nil {
 			if errors.IsConflict(err) {
 				return err
 			}
 			return fmt.Errorf("failed to bind port, namespaceName %v, %w", nn, err)
 		}
-		if err := r.CreateSidecar(ctx, svc); err != nil {
+		if err := r.CreateSidecar(ctx, value); err != nil {
 			return fmt.Errorf("failed to create sidecar, namespaceName %v, %w", nn, err)
 		}
-		if err := r.AddServiceToEnvoyFilter(ctx, svc); err != nil {
+		if err := r.AddServiceToEnvoyFilter(ctx, value); err != nil {
 			if errors.IsConflict(err) {
 				return err
 			}
 			return fmt.Errorf("failed to update envoy filter, namespaceName %v, %w", nn, err)
 		}
 	case *HTTPAccessLogEntryWrapper:
-		entry := obj.(*HTTPAccessLogEntryWrapper)
-		nn = entry.NamespacedName.String()
+		nn = value.NamespacedName.String()
 		r.log.V(5).WithName(nn).Info("refreshing resources through HTTPAccessLog", "function", "Refresh")
-		if entry.DestinationService == Internal {
-			if err := r.AddDestinationServiceToSidecar(entry); err != nil {
+		if value.DestinationService == Internal {
+			if err := r.AddDestinationServiceToSidecar(value); err != nil {
 				return fmt.Errorf("failed to add destination service to sidecar, namespaceName: %v, error: %w", nn, err)
 			}
 		}
-		if entry.DestinationService == External {
-			if err := r.AddExternalServiceToEnvoyFilter(entry); err != nil {
+		if value.DestinationService == External {
+			if err := r.AddExternalServiceToEnvoyFilter(value); err != nil {
 				return fmt.Errorf("failed to add external service to envoyFilter, namespaceName: %v, error: %w", nn, err)
 			}
 		}
 	default:
-		return fmt.Errorf("unknown type %v", v)
+		return fmt.Errorf("unknown type %v", value)
 	}
 	r.log.WithName(nn).Info("refresh resources successfully", "function", "Refresh")
 	return nil
