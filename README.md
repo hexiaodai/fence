@@ -14,7 +14,7 @@ Fence 拥有自动获取服务依赖关系的能力，提供自动管理自定�
 
 ## 性能指标
 
-在 Kubenetes 集群中部署 250 个 Pod。启用 Fence 前 `XDS Response Bytes Max` 最大值 450 kB/s，`Proxy Push Time` 最大值 20s；启用 Fence 后 `XDS Response Bytes Max` 最大值 27 kB/s，`Proxy Push Time` 最大值 5s。综上，启用 Fence 自动管理 Sidecar 资源后 `XDS Response Bytes Max` 的性能提升了约 94%，`Proxy Push Time` 的性能提升了 75%。
+在 Kubenetes 集群中部署 250 个 Pod。启用 Fence 前 `XDS Response Bytes Max` 最大值 450 kB/s，`Proxy Push Time` 最大值 20s；启用 Fence 后 `XDS Response Bytes Max` 最大值 27 kB/s，`Proxy Push Time` 最大值 5s。综上，启用 Fence 自动管理 Sidecar 资源后 `XDS Response Bytes Max` 减少了约 94%，`Proxy Push Time` 减少了约 75%。
 
 ### 启用 Fence 前
 
