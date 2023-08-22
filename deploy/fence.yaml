@@ -164,7 +164,7 @@ spec:
           - name: FENCE_NAMESPACE
             value: fence
           name: fence-proxy
-          image: hejianmin/fence-proxy:0.0.1
+          image: docker.io/hejianmin/fence-proxy:0.0.1
           imagePullPolicy: Always
           resources:
             limits:
@@ -218,7 +218,7 @@ spec:
           - name: LOG_SOURCE_PORT
             value: "8082"
           name: fence
-          image: hejianmin/fence:0.0.1
+          image: docker.io/hejianmin/fence:0.0.1
           imagePullPolicy: Always
           resources:
             limits:
