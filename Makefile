@@ -1,42 +1,22 @@
-SHELL := /bin/bash
+SHELL:= /bin/bash -o pipefail
 
-VERSION := $(shell git describe --tags --abbrev=8)
-ifeq ($(VERSION),)
-	VERSION = 0.0.0-dev
-endif
+# All make targets should be implemented in tools/make/*.mk
+# ====================================================================================================
+# Supported Targets: (Run `make help` to see more information)
+# ====================================================================================================
 
-REPOSITORY ?= hejianmin
+# This file is a wrapper around `make` so that we can force on the
+# --warn-undefined-variables flag.  Sure, you can set
+# `MAKEFLAGS += --warn-undefined-variables` from inside of a Makefile,
+# but then it won't turn on until the second phase (recipe execution),
+# and won't actually be on during the initial phase (parsing).
+# See: https://www.gnu.org/software/make/manual/make.html#Reading-Makefiles
 
-.PHONY: build helm.build image.build image.build.proxy
-build: helm.build image.build image.build.proxy
-
-helm.build:
-	@helm package charts -d dist --debug --version $(VERSION) --app-version $(VERSION)
-	@helm -n fence template \
-		--set deployment.fence.image.repository=$(REPOSITORY)/fence \
-		--set deployment.fenceProxy.image.repository=$(REPOSITORY)/fence-proxy \
-		dist/fence-$(VERSION).tgz > deploy/fence.yaml
-
-image.build:
-	@docker login
-	@! ( docker buildx ls | grep fence-builder ) && \
-	docker buildx create --use --platform=linux/amd64,linux/arm64 --name fence-builder ;\
-	docker buildx build \
-		--builder fence-builder \
-		--tag $(REPOSITORY)/fence:$(VERSION) \
-		--platform=linux/amd64,linux/arm64 \
-		--push \
-		-f tools/docker/fence/Dockerfile \
-		.
-
-image.build.proxy:
-	@docker login
-	@! ( docker buildx ls | grep fence-proxy-builder ) && \
-	docker buildx create --use --platform=linux/amd64,linux/arm64 --name fence-proxy-builder ;\
-	docker buildx build \
-		--builder fence-proxy-builder \
-		--tag $(REPOSITORY)/fence-proxy:$(VERSION) \
-		--platform=linux/amd64,linux/arm64 \
-		--push \
-		-f tools/docker/fence-proxy/Dockerfile \
-		.
+# Have everything-else ("%") depend on _run (which uses
+# $(MAKECMDGOALS) to decide what to run), rather than having
+# everything else run $(MAKE) directly, since that'd end up running
+# multiple sub-Makes if you give multiple targets on the CLI.
+_run:
+	@$(MAKE) --warn-undefined-variables -f tools/make/common.mk $(MAKECMDGOALS)
+.PHONY: _run
+$(if $(MAKECMDGOALS),$(MAKECMDGOALS): %: _run)
