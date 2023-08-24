@@ -50,7 +50,7 @@ func (s *Sidecar) generateDefaultEgress() []*istio.IstioEgressListener {
 		{
 			Hosts: []string{
 				fmt.Sprintf("%s/*", s.IstioNamespace),
-				fmt.Sprintf("%s/*", s.Namespace),
+				fmt.Sprintf("%s/*", s.FenceNamespace),
 			},
 		},
 	}

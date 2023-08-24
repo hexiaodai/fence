@@ -34,10 +34,14 @@ spec:
         - env:
           - name: PROBE_PORT
             value: {{ .Values.fence.probePort | quote }}
+          - name: AUTO_FENCE
+            value: {{ .Values.fence.autoFence | quote }}
           - name: ISTIO_NAMESPACE
             value: {{ .Values.istio.namespace }}
           - name: FENCE_NAMESPACE
             value: {{ .Release.Namespace }}
+          - name: LOG_SOURCE_PORT
+            value: {{ .Values.fence.logSourcePort | quote }}
           name: fence-proxy
           image: {{ .Values.deployment.fenceProxy.image.repository }}:{{ .Chart.AppVersion }}
           imagePullPolicy: {{ .Values.deployment.fenceProxy.imagePullPolicy }}

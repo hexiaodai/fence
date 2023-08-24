@@ -44,7 +44,7 @@ func (r *Runner) Start(ctx context.Context) error {
 		Port:                    9443,
 		LeaderElectionID:        "fence-controller",
 		LeaderElection:          true,
-		LeaderElectionNamespace: r.Namespace,
+		LeaderElectionNamespace: r.FenceNamespace,
 	})
 	if err != nil {
 		r.Logger.Error(err, "start controllers failed")

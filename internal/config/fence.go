@@ -16,9 +16,9 @@ const (
 // Server wraps the Fence configuration and additional parameters
 // used by Fence server.
 type Server struct {
-	// Namespace is the namespace that Fence runs in.
-	Namespace string
-	// Namespace is the namespace that Istio runs in.
+	// FenceNamespace is the namespace that Fence runs in.
+	FenceNamespace string
+	// IstioNamespace is the namespace that Istio runs in.
 	IstioNamespace string
 	// ProbePort is the health check port.
 	ProbePort string
@@ -36,7 +36,7 @@ type Server struct {
 func New() Server {
 	autoFence, _ := strconv.ParseBool(utils.Lookup("AUTO_FENCE", "true"))
 	return Server{
-		Namespace:      utils.Lookup("FENCE_NAMESPACE", "fence"),
+		FenceNamespace: utils.Lookup("FENCE_NAMESPACE", "fence"),
 		IstioNamespace: utils.Lookup("ISTIO_NAMESPACE", "istio-system"),
 		ProbePort:      utils.Lookup("PROBE_PORT", "16021"),
 		WormholePort:   utils.Lookup("WORMHOLE_PORT", "80"),

@@ -40,7 +40,7 @@ func NewNamespaceReconciler(opts ...NamespaceReconcilerOpts) *NamespaceReconcile
 func (r *NamespaceReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
 	log := r.Logger.WithValues("namespace", request.Namespace, "name", request.Name)
 
-	if isSystemNamespace(r.Namespace, r.IstioNamespace, request.Name) {
+	if isSystemNamespace(r.FenceNamespace, r.IstioNamespace, request.Name) {
 		log.Sugar().Debugw("skip system namespace", "namespaceName", request.NamespacedName)
 		return ctrl.Result{}, nil
 	}

@@ -64,7 +64,7 @@ func (l *LogEntry) StreamLogEntry(logEntrys []*data_accesslog.HTTPAccessLogEntry
 
 		log := l.Logger.WithValues("namespace", nn.Namespace, "service", nn.Name)
 
-		if isSystemNamespace(l.Namespace, l.IstioNamespace, nn.Namespace) {
+		if isSystemNamespace(l.FenceNamespace, l.IstioNamespace, nn.Namespace) {
 			log.Sugar().Debugw("skip system namespace", "namespaceName", nn)
 			continue
 		}
