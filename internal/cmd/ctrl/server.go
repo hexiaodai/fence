@@ -28,14 +28,14 @@ func server() error {
 func setupRunners() error {
 	ctx := ctrl.SetupSignalHandler()
 
-	config := config.NewFence()
+	server := config.New()
 
-	ctrlrunner := controller.New(config)
+	ctrlrunner := controller.New(server)
 	if err := ctrlrunner.Start(ctx); err != nil {
 		return err
 	}
 
-	healthzRunner := healthz.New(config.Config)
+	healthzRunner := healthz.New(server)
 	if err := healthzRunner.Start(); err != nil {
 		return err
 	}

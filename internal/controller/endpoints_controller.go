@@ -5,11 +5,9 @@ import (
 	goerrors "errors"
 	"fmt"
 
-	"github.com/go-logr/logr"
 	"github.com/hexiaodai/fence/internal/cache"
 	"github.com/hexiaodai/fence/internal/config"
 	"github.com/hexiaodai/fence/internal/istio"
-	"github.com/hexiaodai/fence/internal/log"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -21,46 +19,36 @@ import (
 
 type EndpointsReconciler struct {
 	client.Client
+	config.Server
 	Scheme         *runtime.Scheme
-	Config         config.Fence
 	Sidecar        *istio.Sidecar
 	NamespaceCache *cache.Namespace
 	Resource       *Resource
-	log            logr.Logger
 }
 
 type EndpointsReconcilerOpts func(*EndpointsReconciler)
 
 func NewEndpointsReconciler(opts ...EndpointsReconcilerOpts) *EndpointsReconciler {
-	logger, err := log.NewLogger()
-	if err != nil {
-		panic(err)
-	}
-	logger = logger.WithValues("Reconcile", "Endpoints")
-
-	r := &EndpointsReconciler{
-		log: logger,
-	}
+	r := &EndpointsReconciler{}
 	for _, opt := range opts {
 		opt(r)
 	}
+	r.Logger = r.Logger.WithName("Reconciler").WithValues("controller", "Endpoints")
 	return r
 }
 
 func (r *EndpointsReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
-	log := r.log.WithName(request.NamespacedName.String())
+	log := r.Logger.WithValues("namespace", request.Namespace, "name", request.Name)
 
-	log.V(5).Info("endpoints reconciling object")
-
-	if isSystemNamespace(r.Config, request.Namespace) {
-		log.V(5).Info("skip system namespace")
+	if isSystemNamespace(r.Server.Namespace, r.Server.IstioNamespace, request.Namespace) {
+		log.Sugar().Debugw("skip system namespace", "namespaceName", request.NamespacedName)
 		return ctrl.Result{}, nil
 	}
 
 	instance := &corev1.Endpoints{}
 	if err := r.Client.Get(ctx, request.NamespacedName, instance); err != nil {
 		if errors.IsNotFound(err) {
-			log.V(5).Info("resource not found. ignoring since object must be deleted")
+			log.Sugar().Debugw("resource not found. ignoring since object must be deleted", "namespaceName", request.NamespacedName)
 			return ctrl.Result{}, nil
 		} else {
 			return ctrl.Result{}, fmt.Errorf("failed to get endpoints: %v", err)
@@ -68,21 +56,21 @@ func (r *EndpointsReconciler) Reconcile(ctx context.Context, request ctrl.Reques
 	}
 
 	if len(instance.Subsets) == 0 {
-		log.V(5).Info("subsets are empty")
+		log.Sugar().Debugw("endpoints subsets are empty", "namespaceName", request.NamespacedName)
 		return ctrl.Result{}, nil
 	}
 
 	svc, pod, err := r.fetchServiceAndPod(ctx, instance)
 	if err != nil {
 		if goerrors.Is(err, errNotFound) || errors.IsNotFound(err) {
-			log.V(5).Info("no service and pod associated")
+			log.Sugar().Warnw("no service and pod associated", "namespaceName", request.NamespacedName)
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("failed to fetch service and pod: %v", err)
 	}
 
-	if !fenceIsEnabled(r.NamespaceCache, r.Config, pod) || !isInjectSidecar(pod) {
-		log.V(5).Info("no fence enabled or no sidecar injected")
+	if !fenceIsEnabled(r.NamespaceCache, r.Server.AutoFence, pod) || !isInjectSidecar(pod) {
+		log.Sugar().Debugw("fence is not enabled or sidecar is not injected", "namespaceName", request.NamespacedName)
 		return ctrl.Result{}, nil
 	}
 
@@ -90,13 +78,13 @@ func (r *EndpointsReconciler) Reconcile(ctx context.Context, request ctrl.Reques
 		if errors.IsConflict(err) {
 			return ctrl.Result{Requeue: true}, nil
 		}
-		return ctrl.Result{}, fmt.Errorf("failed to refresh resource, namespaceName %v, %w", request.NamespacedName, err)
+		return ctrl.Result{}, fmt.Errorf("failed to refresh resource. namespaceName %v. %w", request.NamespacedName, err)
 	}
 
 	return ctrl.Result{}, nil
 }
 
-var errNotFound = fmt.Errorf("not found")
+var errNotFound = fmt.Errorf("resource not found")
 
 func (r *EndpointsReconciler) fetchServiceAndPod(ctx context.Context, ep *corev1.Endpoints) (svc *corev1.Service, pod *corev1.Pod, err error) {
 	if len(ep.Subsets) == 0 {

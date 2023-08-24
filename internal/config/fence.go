@@ -3,49 +3,46 @@ package config
 import (
 	"strconv"
 
+	"github.com/hexiaodai/fence/internal/logging"
 	"github.com/hexiaodai/fence/internal/utils"
 )
 
-type Config struct {
+const (
+	SidecarFenceLabel        = "sidecar.fence.io"
+	SidecarFenceValueEnabled = "enabled"
+	SidecarFenceValueDisable = "disable"
+)
+
+// Server wraps the Fence configuration and additional parameters
+// used by Fence server.
+type Server struct {
+	// Namespace is the namespace that Fence runs in.
+	Namespace string
+	// Namespace is the namespace that Istio runs in.
 	IstioNamespace string
-	FenceNamespace string
-	ProbePort      string
-	WormholePort   string
-}
-
-type Fence struct {
-	Config
-	AutoFence     bool
+	// ProbePort is the health check port.
+	ProbePort string
+	// WormholePort is the wormhole port.
+	WormholePort string
+	// AutoFence is an automatic management sidecar.
+	AutoFence bool
+	// LogSourcePort is the LogSource port.
 	LogSourcePort string
+	// Logger is the logr implementation used by Fence.
+	Logger logging.Logger
 }
 
-type FenceProxy struct {
-	Config
-}
-
-func New() Config {
-	config := Config{
+// New returns a Server with default parameters.
+func New() Server {
+	autoFence, _ := strconv.ParseBool(utils.Lookup("AUTO_FENCE", "true"))
+	return Server{
+		Namespace:      utils.Lookup("FENCE_NAMESPACE", "fence"),
 		IstioNamespace: utils.Lookup("ISTIO_NAMESPACE", "istio-system"),
-		FenceNamespace: utils.Lookup("FENCE_NAMESPACE", "fence"),
 		ProbePort:      utils.Lookup("PROBE_PORT", "16021"),
 		WormholePort:   utils.Lookup("WORMHOLE_PORT", "80"),
+		AutoFence:      autoFence,
+		LogSourcePort:  utils.Lookup("LOG_SOURCE_PORT", "8082"),
+		// the default logger
+		Logger: logging.DefaultLogger(logging.LogLevelInfo),
 	}
-	return config
-}
-
-func NewFence() Fence {
-	autoFence, _ := strconv.ParseBool(utils.Lookup("AUTO_FENCE", "true"))
-	config := Fence{
-		Config:        New(),
-		AutoFence:     autoFence,
-		LogSourcePort: utils.Lookup("LOG_SOURCE_PORT", "8082"),
-	}
-	return config
-}
-
-func NewFenceProxy() FenceProxy {
-	config := FenceProxy{
-		Config: New(),
-	}
-	return config
 }

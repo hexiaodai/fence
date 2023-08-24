@@ -11,8 +11,7 @@ import (
 
 	envoy_config_core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	data_accesslog "github.com/envoyproxy/go-control-plane/envoy/data/accesslog/v3"
-	"github.com/go-logr/logr"
-	"github.com/hexiaodai/fence/internal/log"
+	"github.com/hexiaodai/fence/internal/config"
 	"github.com/hexiaodai/fence/internal/options"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -26,7 +25,7 @@ import (
 type IpService struct {
 	IpToSvc  *IpToSvc
 	SvcToIps *SvcToIps
-	log      logr.Logger
+	config.Server
 }
 
 type IpToSvc struct {
@@ -44,21 +43,16 @@ type Svc struct {
 	Name      string
 }
 
-func NewIpService() *IpService {
+func NewIpService(server config.Server) *IpService {
+	server.Logger = server.Logger.WithName("IpService").WithValues("cache", "IpService")
 	return &IpService{
+		Server:   server,
 		IpToSvc:  &IpToSvc{Svc: make(map[string]Svc)},
 		SvcToIps: &SvcToIps{Ips: make(map[types.NamespacedName][]string)},
 	}
 }
 
 func (i *IpService) Start(ctx context.Context) error {
-	logger, err := log.NewLogger()
-	if err != nil {
-		return err
-	}
-
-	i.log = logger.WithValues("cache", "IpService")
-
 	config, err := options.DefaultConfigFlags.ToRawKubeConfigLoader().ClientConfig()
 	if err != nil {
 		return err
@@ -85,7 +79,7 @@ func (i *IpService) Start(ctx context.Context) error {
 
 	go controller.Run(ctx.Done())
 
-	i.log.Info("started")
+	i.Logger.Info("started")
 	return nil
 }
 

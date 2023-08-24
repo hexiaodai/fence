@@ -9,9 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-logr/logr"
 	"github.com/hexiaodai/fence/internal/cache"
-	"github.com/hexiaodai/fence/internal/log"
+	"github.com/hexiaodai/fence/internal/config"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -20,26 +19,24 @@ const (
 	HeaderOrigDest = "Fence-Orig-Dest"
 )
 
-func NewHttpProxy(wormholePort string, serviceCache *cache.Service) (*HttpProxy, error) {
-	logger, err := log.NewLogger()
-	if err != nil {
-		return nil, err
-	}
-	return &HttpProxy{
+func NewHttpProxy(wormholePort string, serviceCache *cache.Service, server config.Server) (*HttpProxy, error) {
+	hp := &HttpProxy{
+		Server:       server,
 		wormholePort: wormholePort,
 		serviceCache: serviceCache,
-		log:          logger.WithValues("proxy", "HttpProxy"),
-	}, nil
+	}
+	hp.Logger = server.Logger.WithName("HttpProxy").WithValues("proxy", "HttpProxy")
+	return hp, nil
 }
 
 type HttpProxy struct {
 	wormholePort string
 	serviceCache *cache.Service
-	log          logr.Logger
+	config.Server
 }
 
 func (h *HttpProxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	h.log.Info("request", "proto", req.Proto, "method", req.Method, "host", req.Host)
+	h.Logger.Info("request", "proto", req.Proto, "method", req.Method, "host", req.Host)
 
 	var (
 		reqCtx               = req.Context()
@@ -146,7 +143,7 @@ func (h *HttpProxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		select {
 		case <-reqCtx.Done():
 		default:
-			h.log.Info(err.Error())
+			h.Logger.Info(err.Error())
 			http.Error(w, "", http.StatusInternalServerError)
 		}
 		return
@@ -159,6 +156,6 @@ func (h *HttpProxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 	w.WriteHeader(resp.StatusCode)
 	if _, err := io.Copy(w, resp.Body); err != nil {
-		h.log.Info(err.Error())
+		h.Logger.Info(err.Error())
 	}
 }

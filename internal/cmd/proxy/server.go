@@ -28,14 +28,14 @@ func server() error {
 func setupRunners() error {
 	ctx := ctrl.SetupSignalHandler()
 
-	config := config.NewFenceProxy()
+	server := config.New()
 
-	proxyrunner := httpproxy.New(config)
+	proxyrunner := httpproxy.New(server)
 	if err := proxyrunner.Start(ctx); err != nil {
 		return err
 	}
 
-	healthzRunner := healthz.New(config.Config)
+	healthzRunner := healthz.New(server)
 	if err := healthzRunner.Start(); err != nil {
 		return err
 	}

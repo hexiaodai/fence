@@ -10,7 +10,7 @@ type VarNamespace interface {
 	*corev1.Namespace | *cache.Namespace
 }
 
-func fenceIsEnabled[T VarNamespace](namespace T, config iconfig.Fence, pod *corev1.Pod) bool {
+func fenceIsEnabled[T VarNamespace](namespace T, autoFence bool, pod *corev1.Pod) bool {
 	var nsEnabled bool
 	switch any(namespace).(type) {
 	case *corev1.Namespace:
@@ -42,7 +42,7 @@ func fenceIsEnabled[T VarNamespace](namespace T, config iconfig.Fence, pod *core
 	}
 
 	svcEnabled := pod.Labels[iconfig.SidecarFenceLabel] == iconfig.SidecarFenceValueEnabled
-	return config.AutoFence || nsEnabled || svcEnabled
+	return autoFence || nsEnabled || svcEnabled
 }
 
 func namespaceIsDisable(ns *corev1.Namespace) bool {
@@ -58,8 +58,8 @@ func isInjectSidecar(pod *corev1.Pod) bool {
 	return false
 }
 
-func isSystemNamespace(config iconfig.Fence, targetNs string) bool {
-	include := map[string]struct{}{config.IstioNamespace: {}, config.FenceNamespace: {}, "kube-system": {}}
+func isSystemNamespace(namespace, istioNamespace, targetNs string) bool {
+	include := map[string]struct{}{namespace: {}, istioNamespace: {}, "kube-system": {}}
 	_, ok := include[targetNs]
 	return ok
 }
