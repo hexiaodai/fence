@@ -40,7 +40,7 @@ func NewEndpointsReconciler(opts ...EndpointsReconcilerOpts) *EndpointsReconcile
 func (r *EndpointsReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
 	log := r.Logger.WithValues("namespace", request.Namespace, "name", request.Name)
 
-	if isSystemNamespace(r.Server.Namespace, r.Server.IstioNamespace, request.Namespace) {
+	if isSystemNamespace(r.Server.FenceNamespace, r.Server.IstioNamespace, request.Namespace) {
 		log.Sugar().Debugw("skip system namespace", "namespaceName", request.NamespacedName)
 		return ctrl.Result{}, nil
 	}

@@ -164,7 +164,7 @@ func (r *Resource) AddExternalServiceToEnvoyFilter(entry *HTTPAccessLogEntryWrap
 }
 
 func (r *Resource) BindPortToFence(ctx context.Context, sps []corev1.ServicePort) error {
-	nn := types.NamespacedName{Namespace: r.Namespace, Name: "fence-proxy"}
+	nn := types.NamespacedName{Namespace: r.FenceNamespace, Name: "fence-proxy"}
 	log := r.Logger.WithName(nn.String()).WithValues("function", "BindPortToFence")
 
 	fenceProxySvc := &corev1.Service{}
