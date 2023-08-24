@@ -5,11 +5,9 @@ import (
 	goerrors "errors"
 	"fmt"
 
-	"github.com/go-logr/logr"
 	"github.com/hexiaodai/fence/internal/cache"
 	"github.com/hexiaodai/fence/internal/config"
 	"github.com/hexiaodai/fence/internal/istio"
-	"github.com/hexiaodai/fence/internal/log"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -20,46 +18,37 @@ import (
 )
 
 type NamespaceReconciler struct {
+	config.Server
 	client.Client
 	Scheme         *runtime.Scheme
-	Config         config.Fence
 	Sidecar        *istio.Sidecar
 	NamespaceCache *cache.Namespace
 	Resource       *Resource
-	log            logr.Logger
 }
 
 type NamespaceReconcilerOpts func(*NamespaceReconciler)
 
 func NewNamespaceReconciler(opts ...NamespaceReconcilerOpts) *NamespaceReconciler {
-	logger, err := log.NewLogger()
-	if err != nil {
-		panic(err)
-	}
-	logger = logger.WithValues("Reconcile", "Namespace")
-
-	r := &NamespaceReconciler{
-		log: logger,
-	}
+	r := &NamespaceReconciler{}
 	for _, opt := range opts {
 		opt(r)
 	}
+	r.Logger = r.Logger.WithName("Reconciler").WithValues("controller", "Namespace")
 	return r
 }
 
 func (r *NamespaceReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
-	log := r.log.WithName(request.Name)
-	log.V(5).Info("namespace reconciling object")
+	log := r.Logger.WithValues("namespace", request.Namespace, "name", request.Name)
 
-	if isSystemNamespace(r.Config, request.Name) {
-		log.V(5).Info("skip system namespace")
+	if isSystemNamespace(r.Namespace, r.IstioNamespace, request.Name) {
+		log.Sugar().Debugw("skip system namespace", "namespaceName", request.NamespacedName)
 		return ctrl.Result{}, nil
 	}
 
 	instance := &corev1.Namespace{}
 	if err := r.Client.Get(ctx, request.NamespacedName, instance); err != nil {
 		if errors.IsNotFound(err) {
-			log.V(5).Info("resource not found. ignoring since object must be deleted")
+			log.Sugar().Debugw("resource not found. ignoring since object must be deleted", "namespaceName", request.NamespacedName)
 			return ctrl.Result{}, nil
 		} else {
 			return ctrl.Result{}, fmt.Errorf("failed to get namespace: %v", err)
@@ -67,7 +56,7 @@ func (r *NamespaceReconciler) Reconcile(ctx context.Context, request ctrl.Reques
 	}
 
 	if namespaceIsDisable(instance) {
-		log.V(5).Info("skip disabled namespace")
+		log.Sugar().Debugw("skip disabled namespace", "namespaceName", request.NamespacedName)
 		return ctrl.Result{}, nil
 	}
 
@@ -81,17 +70,18 @@ func (r *NamespaceReconciler) Reconcile(ctx context.Context, request ctrl.Reques
 		pod, err := r.fetchPod(ctx, &svc)
 		if err != nil {
 			if !goerrors.Is(err, errNotFound) && !errors.IsNotFound(err) {
-				log.Error(err, "failed to fetch pod", "namespaceName", nn.String())
+				log.Error(err, "failed to fetch pod", "namespaceName", nn)
 			}
 			continue
 		}
-		if !fenceIsEnabled(r.NamespaceCache, r.Config, pod) && !isInjectSidecar(pod) {
-			log.V(5).Info("no fence enabled or no sidecar injected", "namespaceName", nn.String())
+		if !fenceIsEnabled(r.NamespaceCache, r.AutoFence, pod) && !isInjectSidecar(pod) {
+			log.Sugar().Debugw("skip namespace without fence enabled or without sidecar injected", "namespaceName", nn)
 			continue
 		}
 
 		if err := r.Resource.Refresh(ctx, &svc); err != nil {
 			if errors.IsConflict(err) {
+				log.Sugar().Debugw(err.Error(), "namespaceName", nn)
 				return ctrl.Result{Requeue: true}, nil
 			}
 		}

@@ -3,39 +3,21 @@ package metric
 import (
 	"context"
 
-	"github.com/go-logr/logr"
 	"github.com/hexiaodai/fence/internal/config"
-	"github.com/hexiaodai/fence/internal/log"
 )
 
-func New(config config.Fence) *Runner {
-	r := &Runner{}
-	r.config = config
-	return r
+func New(server config.Server) *Runner {
+	server.Logger = server.Logger.WithName("Runner").WithValues("metric", "Runner")
+	return &Runner{Server: server}
 }
 
 type Runner struct {
-	Config
-}
-
-type Config struct {
 	accessLogSource *AccessLogSource
-	log             logr.Logger
-	config          config.Fence
-}
-
-func (r *Runner) Name() string {
-	return "Runner"
+	config.Server
 }
 
 func (r *Runner) Start(ctx context.Context) error {
-	logger, err := log.NewLogger()
-	if err != nil {
-		return err
-	}
-	r.log = logger.WithValues("metric", r.Name())
-
-	accessLogSource, err := NewAccessLogSource(r.config.LogSourcePort)
+	accessLogSource, err := NewAccessLogSource(r.LogSourcePort, r.Server)
 	if err != nil {
 		return err
 	}
@@ -45,7 +27,7 @@ func (r *Runner) Start(ctx context.Context) error {
 
 	r.accessLogSource = accessLogSource
 
-	r.log.Info("started")
+	r.Logger.Info("started")
 	return nil
 }
 

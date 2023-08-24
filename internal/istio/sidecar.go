@@ -19,11 +19,11 @@ var (
 
 type Sidecar struct {
 	ipServiceCache *icache.IpService
-	config         config.Fence
+	config.Server
 }
 
-func NewSidecar(ipServiceCache *icache.IpService, config config.Fence) *Sidecar {
-	return &Sidecar{ipServiceCache: ipServiceCache, config: config}
+func NewSidecar(ipServiceCache *icache.IpService, server config.Server) *Sidecar {
+	return &Sidecar{ipServiceCache: ipServiceCache, Server: server}
 }
 
 func (s *Sidecar) Generate(svc *corev1.Service) (*networkingv1alpha3.Sidecar, error) {
@@ -49,8 +49,8 @@ func (s *Sidecar) generateDefaultEgress() []*istio.IstioEgressListener {
 	return []*istio.IstioEgressListener{
 		{
 			Hosts: []string{
-				fmt.Sprintf("%s/*", s.config.IstioNamespace),
-				fmt.Sprintf("%s/*", s.config.FenceNamespace),
+				fmt.Sprintf("%s/*", s.IstioNamespace),
+				fmt.Sprintf("%s/*", s.Namespace),
 			},
 		},
 	}

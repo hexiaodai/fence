@@ -6,9 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-logr/logr"
 	"github.com/hexiaodai/fence/internal/config"
-	"github.com/hexiaodai/fence/internal/log"
 	"github.com/hexiaodai/fence/internal/options"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -18,19 +16,16 @@ import (
 	"k8s.io/client-go/tools/cache"
 )
 
-func NewNamespace() *Namespace {
+func NewNamespace(server config.Server) *Namespace {
+	server.Logger = server.Logger.WithName("Namespace").WithValues("cache", "Namespace")
 	return &Namespace{
+		Server:  server,
 		Disable: make(map[string]struct{}),
 		Enabled: make(map[string]struct{}),
 	}
 }
 
 func (ns *Namespace) Start(ctx context.Context) error {
-	logger, err := log.NewLogger()
-	if err != nil {
-		return err
-	}
-	ns.log = logger.WithValues("cache", "Namespace")
 	config, err := options.DefaultConfigFlags.ToRawKubeConfigLoader().ClientConfig()
 	if err != nil {
 		return err
@@ -60,14 +55,14 @@ func (ns *Namespace) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to wait for namespace cache sync")
 	}
 
-	ns.log.Info("started")
+	ns.Logger.Info("started")
 	return nil
 }
 
 type Namespace struct {
 	Disable map[string]struct{}
 	Enabled map[string]struct{}
-	log     logr.Logger
+	config.Server
 	sync.RWMutex
 }
 

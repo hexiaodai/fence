@@ -3,50 +3,32 @@ package proxy
 import (
 	"context"
 
-	"github.com/go-logr/logr"
 	icache "github.com/hexiaodai/fence/internal/cache"
 	"github.com/hexiaodai/fence/internal/config"
-	"github.com/hexiaodai/fence/internal/log"
 )
 
-func New(config config.FenceProxy) *Runner {
-	r := &Runner{}
-	r.config = config
-	return r
+func New(server config.Server) *Runner {
+	server.Logger = server.Logger.WithName("Runner").WithValues("proxy", "Runner")
+	return &Runner{Server: server}
 }
 
 type Runner struct {
-	Config
-}
-
-func (r *Runner) Name() string {
-	return "Runner"
-}
-
-type Config struct {
-	log    logr.Logger
-	config config.FenceProxy
+	config.Server
 }
 
 func (r *Runner) Start(ctx context.Context) error {
-	logger, err := log.NewLogger()
-	if err != nil {
-		return err
-	}
-	r.log = logger.WithValues("proxy", r.Name())
-
-	serviceCache := icache.NewService()
+	serviceCache := icache.NewService(r.Server)
 	if err := serviceCache.Start(ctx); err != nil {
 		return err
 	}
 
-	serve, err := NewServe(serviceCache, r.config)
+	serve, err := NewServe(serviceCache, r.Server)
 	if err != nil {
 		return err
 	}
 
-	serve.ListenAndServe(r.config.WormholePort)
+	serve.ListenAndServe(r.WormholePort)
 
-	r.log.Info("started")
+	r.Logger.Info("started")
 	return nil
 }

@@ -3,11 +3,9 @@ package controller
 import (
 	"context"
 
-	"github.com/go-logr/logr"
 	icache "github.com/hexiaodai/fence/internal/cache"
 	"github.com/hexiaodai/fence/internal/config"
 	"github.com/hexiaodai/fence/internal/istio"
-	"github.com/hexiaodai/fence/internal/log"
 	"github.com/hexiaodai/fence/internal/metric"
 	networkingv1alpha3 "istio.io/client-go/pkg/apis/networking/v1alpha3"
 	corev1 "k8s.io/api/core/v1"
@@ -18,19 +16,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
-func New(config config.Fence) *Runner {
-	r := &Runner{}
-	r.config = config
-	return r
+func New(server config.Server) *Runner {
+	return &Runner{server}
 }
 
 type Runner struct {
-	Config
-}
-
-type Config struct {
-	log    logr.Logger
-	config config.Fence
+	config.Server
 }
 
 func (r *Runner) Name() string {
@@ -38,11 +29,8 @@ func (r *Runner) Name() string {
 }
 
 func (r *Runner) Start(ctx context.Context) error {
-	logger, err := log.NewLogger()
-	if err != nil {
-		return err
-	}
-	r.log = logger.WithValues("controller", r.Name())
+	r.Logger = r.Logger.WithName(r.Name()).WithValues("controller", r.Name())
+
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{
 		Development: true,
 	})))
@@ -56,15 +44,15 @@ func (r *Runner) Start(ctx context.Context) error {
 		Port:                    9443,
 		LeaderElectionID:        "fence-controller",
 		LeaderElection:          true,
-		LeaderElectionNamespace: r.config.FenceNamespace,
+		LeaderElectionNamespace: r.Namespace,
 	})
 	if err != nil {
-		r.log.Error(err, "start controllers failed")
+		r.Logger.Error(err, "start controllers failed")
 		return err
 	}
 
 	if err := r.registerControllers(mgr); err != nil {
-		r.log.Error(err, "register controllers failed")
+		r.Logger.Error(err, "register controllers failed")
 		return err
 	}
 
@@ -74,23 +62,23 @@ func (r *Runner) Start(ctx context.Context) error {
 		}
 	}()
 
-	r.log.Info("started")
+	r.Logger.Info("started")
 	return nil
 }
 
 func (r *Runner) registerControllers(mgr ctrl.Manager) error {
-	ipService := icache.NewIpService()
+	ipService := icache.NewIpService(r.Server)
 	if err := ipService.Start(context.Background()); err != nil {
 		return err
 	}
-	namespaceCache := icache.NewNamespace()
+	namespaceCache := icache.NewNamespace(r.Server)
 	if err := namespaceCache.Start(context.Background()); err != nil {
 		return err
 	}
 
-	sidecar := istio.NewSidecar(ipService, r.config)
+	sidecar := istio.NewSidecar(ipService, r.Server)
 
-	resource := NewResource(mgr.GetClient(), sidecar, namespaceCache, r.config, mgr.GetScheme())
+	resource := NewResource(mgr.GetClient(), sidecar, namespaceCache, r.Server, mgr.GetScheme())
 
 	if err := NewEndpointsReconciler(func(sr *EndpointsReconciler) {
 		sr.Client = mgr.GetClient()
@@ -98,7 +86,7 @@ func (r *Runner) registerControllers(mgr ctrl.Manager) error {
 		sr.Sidecar = sidecar
 		sr.NamespaceCache = namespaceCache
 		sr.Resource = resource
-		sr.Config = r.config
+		sr.Server = r.Server
 	}).SetupWithManager(mgr); err != nil {
 		return err
 	}
@@ -109,16 +97,16 @@ func (r *Runner) registerControllers(mgr ctrl.Manager) error {
 		nr.Sidecar = sidecar
 		nr.NamespaceCache = namespaceCache
 		nr.Resource = resource
-		nr.Config = r.config
+		nr.Server = r.Server
 	}).SetupWithManager(mgr); err != nil {
 		return err
 	}
 
-	metricrunner := metric.New(r.config)
+	metricrunner := metric.New(r.Server)
 	if err := metricrunner.Start(context.Background()); err != nil {
 		return err
 	}
-	le := NewLogEntry(mgr.GetClient(), mgr.GetScheme(), sidecar, namespaceCache, ipService, resource, r.config)
+	le := NewLogEntry(mgr.GetClient(), mgr.GetScheme(), sidecar, namespaceCache, ipService, resource, r.Server)
 	metricrunner.RegisterHttpLogEntry(le)
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

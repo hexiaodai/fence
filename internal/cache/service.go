@@ -6,8 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-logr/logr"
-	"github.com/hexiaodai/fence/internal/log"
+	"github.com/hexiaodai/fence/internal/config"
 	"github.com/hexiaodai/fence/internal/options"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -18,18 +17,15 @@ import (
 	"k8s.io/client-go/tools/cache"
 )
 
-func NewService() *Service {
+func NewService(server config.Server) *Service {
+	server.Logger = server.Logger.WithName("Service").WithValues("cache", "Service")
 	return &Service{
+		Server:        server,
 		NcNameIndexer: make(map[types.NamespacedName]struct{}),
 	}
 }
 
 func (sc *Service) Start(ctx context.Context) error {
-	logger, err := log.NewLogger()
-	if err != nil {
-		return err
-	}
-	sc.log = logger.WithValues("cache", "Service")
 	config, err := options.DefaultConfigFlags.ToRawKubeConfigLoader().ClientConfig()
 	if err != nil {
 		return err
@@ -59,7 +55,7 @@ func (sc *Service) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to wait for service cache sync")
 	}
 
-	sc.log.Info("started")
+	sc.Logger.Info("started")
 	return nil
 }
 
@@ -78,7 +74,7 @@ func (sc *Service) handleServiceUpdate(obj interface{}) {
 
 type Service struct {
 	NcNameIndexer map[types.NamespacedName]struct{}
-	log logr.Logger
+	config.Server
 	sync.RWMutex
 }
 

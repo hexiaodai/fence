@@ -6,8 +6,7 @@ import (
 
 	data_accesslog "github.com/envoyproxy/go-control-plane/envoy/data/accesslog/v3"
 	service_accesslog "github.com/envoyproxy/go-control-plane/envoy/service/accesslog/v3"
-	"github.com/go-logr/logr"
-	"github.com/hexiaodai/fence/internal/log"
+	"github.com/hexiaodai/fence/internal/config"
 	"google.golang.org/grpc"
 )
 
@@ -18,23 +17,19 @@ type HttpLogEntry interface {
 type AccessLogSource struct {
 	servePort    string
 	httpLogEntry HttpLogEntry
-	log          logr.Logger
+	config.Server
 }
 
 func (a *AccessLogSource) Name() string {
 	return "AccessLogSource"
 }
 
-func NewAccessLogSource(servePort string) (*AccessLogSource, error) {
-	logger, err := log.NewLogger()
-	if err != nil {
-		return nil, err
-	}
+func NewAccessLogSource(servePort string, server config.Server) (*AccessLogSource, error) {
 	source := &AccessLogSource{
+		Server:    server,
 		servePort: servePort,
 	}
-	source.log = logger.WithValues("metric", source.Name())
-
+	source.Logger = source.Logger.WithName(source.Name()).WithValues("metric", source.Name())
 	return source, nil
 }
 
@@ -73,6 +68,6 @@ func (s *AccessLogSource) Start() error {
 		}
 	}()
 
-	s.log.Info("accessLogSource server is starting to listen", "addr", s.servePort)
+	s.Logger.Info("accessLogSource server is starting to listen", "addr", s.servePort)
 	return nil
 }
