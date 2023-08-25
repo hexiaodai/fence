@@ -41,7 +41,7 @@ IMAGE_NAME_PROXY ?= fence-proxy
 IMAGE ?= $(REGISTRY)/$(IMAGE_NAME)
 IMAGE_PROXY ?= $(REGISTRY)/$(IMAGE_NAME_PROXY)
 # Version is the tag to use for build and push image targets.
-VERSION := $(shell git describe --tags --abbrev=8)
+VERSION ?= $(shell git describe --tags --abbrev=8)
 
 .PHONY: help
 help: ## help: Show this help info.
