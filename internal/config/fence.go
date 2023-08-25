@@ -43,6 +43,6 @@ func New() Server {
 		AutoFence:      autoFence,
 		LogSourcePort:  utils.Lookup("LOG_SOURCE_PORT", "8082"),
 		// the default logger
-		Logger: logging.DefaultLogger(logging.LogLevelInfo),
+		Logger: logging.DefaultLogger(logging.LogLevel(utils.Lookup("LOG_LEVEL", logging.LogLevelInfo))),
 	}
 }

@@ -34,6 +34,8 @@ spec:
             value: {{ .Release.Namespace }}
           - name: LOG_SOURCE_PORT
             value: {{ .Values.fence.logSourcePort | quote }}
+          - name: LOG_LEVEL
+            value: {{ .Values.fence.logLevel }}
           name: fence
           image: {{ .Values.deployment.fence.image.repository }}:{{ .Chart.AppVersion }}
           imagePullPolicy: {{ .Values.deployment.fence.imagePullPolicy }}
