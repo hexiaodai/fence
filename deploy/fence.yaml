@@ -1,4 +1,10 @@
 ---
+# Source: fence/templates/fence-namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fence
+---
 # Source: fence/templates/fence-proxy.yaml
 apiVersion: v1
 kind: ServiceAccount
@@ -159,12 +165,18 @@ spec:
         - env:
           - name: PROBE_PORT
             value: "16021"
+          - name: AUTO_FENCE
+            value: "true"
           - name: ISTIO_NAMESPACE
             value: istio-system
           - name: FENCE_NAMESPACE
             value: fence
+          - name: LOG_SOURCE_PORT
+            value: "8082"
+          - name: LOG_LEVEL
+            value: info
           name: fence-proxy
-          image: docker.io/hejianmin/fence-proxy:0.0.1
+          image: docker.io/hejianmin/fence-proxy:0.0.1-13-gce21baab
           imagePullPolicy: Always
           resources:
             limits:
@@ -217,8 +229,10 @@ spec:
             value: fence
           - name: LOG_SOURCE_PORT
             value: "8082"
+          - name: LOG_LEVEL
+            value: info
           name: fence
-          image: docker.io/hejianmin/fence:0.0.1
+          image: docker.io/hejianmin/fence:0.0.1-13-gce21baab
           imagePullPolicy: Always
           resources:
             limits:
