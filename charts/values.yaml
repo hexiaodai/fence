@@ -27,6 +27,7 @@ fence:
   autoFence: true
   probePort: 16021
   logSourcePort: 8082
+  logLevel: info
 
 istio:
   namespace: istio-system
