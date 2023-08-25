@@ -31,7 +31,7 @@ Fence 拥有自动获取服务依赖关系的能力，提供自动管理自定�
 ## 安装
 
 ```shell
-kubectl apply -f "https://raw.githubusercontent.com/hexiaodai/fence/0.0.1/deploy/fence.yaml"
+kubectl apply -f "https://raw.githubusercontent.com/hexiaodai/fence/0.1.0/deploy/fence.yaml"
 ```
 
 ## 指南
