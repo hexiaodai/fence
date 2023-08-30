@@ -32,11 +32,13 @@ endif
 OCI_REGISTRY ?= oci://docker.io/hejianmin
 # REGISTRY is the image registry to use for build and push image targets.
 REGISTRY ?= docker.io/hejianmin
-# IMAGE_NAME is the name of EG image
+# IMAGE_NAME is the name of image
 # Use fence-dev in default when developing
 # Use fence when releasing an image.
 IMAGE_NAME ?= fence
 IMAGE_NAME_PROXY ?= fence-proxy
+# HELM_NAME is the name of helm chart
+HELM_NAME ?= chart-fence
 # IMAGE is the image URL for build and push image targets.
 IMAGE ?= $(REGISTRY)/$(IMAGE_NAME)
 IMAGE_PROXY ?= $(REGISTRY)/$(IMAGE_NAME_PROXY)
