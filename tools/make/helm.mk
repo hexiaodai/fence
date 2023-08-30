@@ -13,12 +13,12 @@ helm.generate-template:
 	@helm -n fence template \
 		--set deployment.fence.image.repository=$(IMAGE) \
 		--set deployment.fenceProxy.image.repository=$(IMAGE_PROXY) \
-		deploy/fence-$(VERSION).tgz > deploy/fence.yaml
+		deploy/$(HELM_NAME)-$(VERSION).tgz > deploy/fence.yaml
 
 .PHONY: helm.push
 helm.push:
 	@$(LOG_TARGET)
-	@helm push deploy/fence-$(VERSION).tgz $(OCI_REGISTRY)
+	@helm push deploy/$(HELM_NAME)-$(VERSION).tgz $(OCI_REGISTRY)
 
 ##@ Helm
 
