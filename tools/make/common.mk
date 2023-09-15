@@ -46,7 +46,7 @@ IMAGE_PROXY ?= $(REGISTRY)/$(IMAGE_NAME_PROXY)
 VERSION ?= $(shell git describe --tags --abbrev=8)
 
 .PHONY: help
-help: ## help: Show this help info.
+help: ## Show this help info.
 	@$(LOG_TARGET)
 	@echo -e "Fence is an open source project to automate the management of custom resources Sidecar\n"
 	@echo -e "Usage:\n  make \033[36m<Target>\033[0m \033[36m<Option>\033[0m\n\nTargets:"
