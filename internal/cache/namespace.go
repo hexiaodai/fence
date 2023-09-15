@@ -20,8 +20,8 @@ func NewNamespace(server config.Server) *Namespace {
 	server.Logger = server.Logger.WithName("Namespace").WithValues("cache", "Namespace")
 	return &Namespace{
 		Server:  server,
-		Disable: make(map[string]struct{}),
-		Enabled: make(map[string]struct{}),
+		Disable: sync.Map{},
+		Enabled: sync.Map{},
 	}
 }
 
@@ -60,10 +60,11 @@ func (ns *Namespace) Start(ctx context.Context) error {
 }
 
 type Namespace struct {
-	Disable map[string]struct{}
-	Enabled map[string]struct{}
+	// map[namespaceName]struct{}
+	Disable sync.Map
+	// map[namespaceName]struct{}
+	Enabled sync.Map
 	config.Server
-	sync.RWMutex
 }
 
 func (ns *Namespace) handleNamespaceUpdate(obj interface{}) {
@@ -88,34 +89,24 @@ func (ns *Namespace) handleNamespaceDelete(obj interface{}) {
 }
 
 func (ns *Namespace) IsDisable(name string) bool {
-	ns.RLock()
-	defer ns.RUnlock()
-	_, ok := ns.Disable[name]
+	_, ok := ns.Disable.Load(name)
 	return ok
 }
 
 func (ns *Namespace) IsEnabled(name string) bool {
-	ns.RLock()
-	defer ns.RUnlock()
-	_, ok := ns.Enabled[name]
+	_, ok := ns.Enabled.Load(name)
 	return ok
 }
 
 func (ns *Namespace) SetDisable(name string) {
-	ns.Lock()
-	defer ns.Unlock()
-	ns.Disable[name] = struct{}{}
+	ns.Disable.Store(name, struct{}{})
 }
 
 func (ns *Namespace) SetEnabled(name string) {
-	ns.Lock()
-	defer ns.Unlock()
-	ns.Enabled[name] = struct{}{}
+	ns.Enabled.Store(name, struct{}{})
 }
 
 func (ns *Namespace) Delete(name string) {
-	ns.Lock()
-	defer ns.Unlock()
-	delete(ns.Disable, name)
-	delete(ns.Enabled, name)
+	ns.Disable.Delete(name)
+	ns.Enabled.Delete(name)
 }

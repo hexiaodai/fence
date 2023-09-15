@@ -38,44 +38,43 @@ func NewResource(client client.Client, sidecar *iistio.Sidecar, namespaceCache *
 	}
 }
 
-func (r *Resource) Refresh(ctx context.Context, obj interface{}) error {
-	var nn string
-	switch value := obj.(type) {
-	case *corev1.Service:
-		nn = types.NamespacedName{Namespace: value.Namespace, Name: value.Name}.String()
-		r.Logger.Sugar().Debugw("refreshing resources through Service", "function", "Refresh", "namespaceName", nn)
-		if err := r.BindPortToFence(ctx, value.Spec.Ports); err != nil {
-			if errors.IsConflict(err) {
-				return err
-			}
-			return fmt.Errorf("failed to bind port. namespaceName %v. %w", nn, err)
+func (r *Resource) RefreshByService(ctx context.Context, obj *corev1.Service) error {
+	nn := types.NamespacedName{Namespace: obj.Namespace, Name: obj.Name}.String()
+	r.Logger.Sugar().Debugw("refreshing resources through Service", "function", "RefreshByService", "namespaceName", nn)
+	if err := r.BindPortToFence(ctx, obj.Spec.Ports); err != nil {
+		if errors.IsConflict(err) {
+			return err
 		}
-		if err := r.CreateSidecar(ctx, value); err != nil {
-			return fmt.Errorf("failed to create sidecar. namespaceName %v. %w", nn, err)
-		}
-		if err := r.AddServiceToEnvoyFilter(ctx, value); err != nil {
-			if errors.IsConflict(err) {
-				return err
-			}
-			return fmt.Errorf("failed to update envoy filter. namespaceName %v. %w", nn, err)
-		}
-	case *HTTPAccessLogEntryWrapper:
-		nn = value.NamespacedName.String()
-		r.Logger.Sugar().Debugw("refreshing resources through HTTPAccessLog", "function", "Refresh", "namespaceName", nn)
-		if value.DestinationService == Internal {
-			if err := r.AddDestinationServiceToSidecar(value); err != nil {
-				return fmt.Errorf("failed to add destination service to sidecar. namespaceName: %v. %w", nn, err)
-			}
-		}
-		if value.DestinationService == External {
-			if err := r.AddExternalServiceToEnvoyFilter(value); err != nil {
-				return fmt.Errorf("failed to add external service to envoyFilter. namespaceName: %v. %w", nn, err)
-			}
-		}
-	default:
-		return fmt.Errorf("unknown type %v", value)
+		return fmt.Errorf("failed to bind port. namespaceName %v. %w", nn, err)
 	}
-	r.Logger.Sugar().Debugw("refreshing resources successfully", "function", "Refresh")
+	if err := r.CreateSidecar(ctx, obj); err != nil {
+		return fmt.Errorf("failed to create sidecar. namespaceName %v. %w", nn, err)
+	}
+	if err := r.AddServiceToEnvoyFilter(ctx, obj); err != nil {
+		if errors.IsConflict(err) {
+			return err
+		}
+		return fmt.Errorf("failed to update envoy filter. namespaceName %v. %w", nn, err)
+	}
+	r.Logger.Sugar().Debugw("refreshing resources successfully", "function", "RefreshByService", "namespaceName", nn)
+	return nil
+}
+
+func (r *Resource) RefreshByHTTPAccessLogEntryWrapper(ctx context.Context, obj *HTTPAccessLogEntryWrapper) error {
+	nn := obj.NamespacedName.String()
+	r.Logger.Sugar().Debugw("refreshing resources through HTTPAccessLog", "function", "RefreshByHTTPAccessLogEntryWrapper", "namespaceName", nn)
+	if obj.DestinationService == Internal {
+		if err := r.AddDestinationServiceToSidecar(obj); err != nil {
+			return fmt.Errorf("failed to add destination service to sidecar. namespaceName: %v. %w", nn, err)
+		}
+	} else if obj.DestinationService == External {
+		if err := r.AddExternalServiceToEnvoyFilter(obj); err != nil {
+			return fmt.Errorf("failed to add external service to envoyFilter. namespaceName: %v. %w", nn, err)
+		}
+	} else {
+		r.Logger.Sugar().Warnw("unknown DestinationService", "function", "RefreshByHTTPAccessLogEntryWrapper", "namespaceName", nn)
+	}
+	r.Logger.Sugar().Debugw("refreshing resources successfully", "function", "RefreshByHTTPAccessLogEntryWrapper", "namespaceName", nn)
 	return nil
 }
 
@@ -101,7 +100,7 @@ func (r *Resource) CreateSidecar(ctx context.Context, svc *corev1.Service) error
 		}
 		return err
 	}
-	log.Info("create sidecar successfully")
+	log.Sugar().Debugw("create sidecar successfully", "function", "CreateSidecar", "namespaceName", nn)
 	return nil
 }
 
@@ -123,7 +122,7 @@ func (r *Resource) AddDestinationServiceToSidecar(entry *HTTPAccessLogEntryWrapp
 	if err := r.Client.Update(context.Background(), found); err != nil {
 		return err
 	}
-	log.Info("destination added successfully to sidecar")
+	log.Sugar().Debugw("destination added successfully to sidecar", "function", "AddDestinationServiceToSidecar", "namespaceName", entry.NamespacedName)
 	return nil
 }
 
@@ -139,7 +138,7 @@ func (r *Resource) AddServiceToEnvoyFilter(ctx context.Context, svc *corev1.Serv
 	if err := r.Client.Update(ctx, envoyFilter); err != nil {
 		return err
 	}
-	log.Info("service added successfully to envoyFilter")
+	log.Sugar().Debugw("service added successfully to envoyFilter", "function", "AddServiceToEnvoyFilter", "namespaceName", nn)
 	return nil
 }
 
@@ -159,7 +158,7 @@ func (r *Resource) AddExternalServiceToEnvoyFilter(entry *HTTPAccessLogEntryWrap
 	if err := r.Client.Update(context.Background(), found); err != nil {
 		return err
 	}
-	log.Info("external service added successfully to envoyFilter")
+	log.Sugar().Debugw("external service added successfully to envoyFilter", "function", "AddExternalServiceToEnvoyFilter", "namespaceName", nn)
 	return nil
 }
 
@@ -201,6 +200,6 @@ func (r *Resource) BindPortToFence(ctx context.Context, sps []corev1.ServicePort
 	if err := r.Client.Update(context.Background(), fenceProxySvc); err != nil {
 		return err
 	}
-	log.Info("ports bind successfully to fence")
+	log.Sugar().Debugw("ports bind successfully to fence", "function", "BindPortToFence", "namespaceName", nn)
 	return nil
 }
