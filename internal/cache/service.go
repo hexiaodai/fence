@@ -20,8 +20,8 @@ import (
 func NewService(server config.Server) *Service {
 	server.Logger = server.Logger.WithName("Service").WithValues("cache", "Service")
 	return &Service{
-		Server:        server,
-		NcNameIndexer: make(map[types.NamespacedName]struct{}),
+		Server: server,
+		Data:   sync.Map{},
 	}
 }
 
@@ -73,9 +73,9 @@ func (sc *Service) handleServiceUpdate(obj interface{}) {
 }
 
 type Service struct {
-	NcNameIndexer map[types.NamespacedName]struct{}
+	// map[types.NamespacedName]struct{}
+	Data sync.Map
 	config.Server
-	sync.RWMutex
 }
 
 func (sc *Service) handleServiceDelete(obj interface{}) {
@@ -91,20 +91,14 @@ func (sc *Service) handleServiceDelete(obj interface{}) {
 }
 
 func (sc *Service) ExistNcName(nn types.NamespacedName) bool {
-	sc.RLock()
-	defer sc.RUnlock()
-	_, ok := sc.NcNameIndexer[nn]
+	_, ok := sc.Data.Load(nn)
 	return ok
 }
 
 func (sc *Service) Set(nn types.NamespacedName) {
-	sc.Lock()
-	defer sc.Unlock()
-	sc.NcNameIndexer[nn] = struct{}{}
+	sc.Data.Store(nn, struct{}{})
 }
 
 func (sc *Service) Delete(nn types.NamespacedName) {
-	sc.Lock()
-	defer sc.Unlock()
-	delete(sc.NcNameIndexer, nn)
+	sc.Data.Delete(nn)
 }

@@ -76,7 +76,7 @@ func (l *LogEntry) StreamLogEntry(logEntrys []*data_accesslog.HTTPAccessLogEntry
 		}
 
 		retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-			return l.resource.Refresh(context.Background(), entryWrapper)
+			return l.resource.RefreshByHTTPAccessLogEntryWrapper(context.Background(), entryWrapper)
 		})
 		if retryErr != nil {
 			l.Logger.Error(retryErr, "failed to update sidecar, exceeded the maximum number of conflict retries", "namespaceName", nn)
@@ -123,7 +123,7 @@ func (l *LogEntry) destinationService(entry *data_accesslog.HTTPAccessLogEntry) 
 		destSvc.Namespace = destParts[1]
 	}
 
-	if _, ok := l.ipServiceCache.SvcToIps.Ips[destSvc]; ok {
+	if _, ok := l.ipServiceCache.ServiceToIps.Load(destSvc); ok {
 		return Internal
 	}
 	return External

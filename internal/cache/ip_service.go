@@ -23,32 +23,19 @@ import (
 )
 
 type IpService struct {
-	IpToSvc  *IpToSvc
-	SvcToIps *SvcToIps
+	// map[string]types.NamespacedName
+	IpToService sync.Map
+	// map[types.NamespacedName][]string
+	ServiceToIps sync.Map
 	config.Server
-}
-
-type IpToSvc struct {
-	Svc map[string]Svc
-	sync.RWMutex
-}
-
-type SvcToIps struct {
-	Ips map[types.NamespacedName][]string
-	sync.RWMutex
-}
-
-type Svc struct {
-	Namespace string
-	Name      string
 }
 
 func NewIpService(server config.Server) *IpService {
 	server.Logger = server.Logger.WithName("IpService").WithValues("cache", "IpService")
 	return &IpService{
-		Server:   server,
-		IpToSvc:  &IpToSvc{Svc: make(map[string]Svc)},
-		SvcToIps: &SvcToIps{Ips: make(map[types.NamespacedName][]string)},
+		Server:       server,
+		IpToService:  sync.Map{},
+		ServiceToIps: sync.Map{},
 	}
 }
 
@@ -118,42 +105,31 @@ func (i *IpService) handleEpDelete(ctx context.Context, obj interface{}) {
 }
 
 func (i *IpService) addIpWithEp(ep *corev1.Endpoints) {
-	svc := Svc{Namespace: ep.GetNamespace(), Name: ep.GetName()}
-	ipToSvcCache := i.IpToSvc
-	svcToIpsCache := i.SvcToIps
-
+	svc := types.NamespacedName{Namespace: ep.GetNamespace(), Name: ep.GetName()}
 	var addresses []string
-	ipToSvcCache.Lock()
 	for _, subset := range ep.Subsets {
 		for _, address := range subset.Addresses {
 			addresses = append(addresses, address.IP)
-			ipToSvcCache.Svc[address.IP] = svc
+			i.IpToService.Store(address.IP, svc)
 		}
 	}
-	ipToSvcCache.Unlock()
-
-	svcToIpsCache.Lock()
-	svcToIpsCache.Ips[types.NamespacedName{Namespace: svc.Namespace, Name: svc.Name}] = addresses
-	svcToIpsCache.Unlock()
+	i.ServiceToIps.Store(svc, addresses)
 }
 
 func (i *IpService) deleteIpFromEp(ep *corev1.Endpoints) {
-	nn := types.NamespacedName{Namespace: ep.GetNamespace(), Name: ep.GetName()}
-	ipToSvcCache := i.IpToSvc
-	svcToIpsCache := i.SvcToIps
+	svc := types.NamespacedName{Namespace: ep.GetNamespace(), Name: ep.GetName()}
 
-	// delete svc in svcToIpsCache
-	svcToIpsCache.Lock()
-	ips := svcToIpsCache.Ips[nn]
-	delete(svcToIpsCache.Ips, nn)
-	svcToIpsCache.Unlock()
+	// delete svc in ServiceToIps
+	value, ok := i.ServiceToIps.LoadAndDelete(svc)
+	if !ok {
+		return
+	}
+	ips := value.([]string)
 
 	// delete ips related svc
-	ipToSvcCache.Lock()
 	for _, ip := range ips {
-		delete(ipToSvcCache.Svc, ip)
+		i.IpToService.Delete(ip)
 	}
-	ipToSvcCache.Unlock()
 }
 
 func (i *IpService) FetchSourceIp(entry *data_accesslog.HTTPAccessLogEntry) (sourceIp string, err error) {
@@ -166,16 +142,17 @@ func (i *IpService) FetchSourceIp(entry *data_accesslog.HTTPAccessLogEntry) (sou
 	return
 }
 
-func (i *IpService) FetchSourceSvc(sourceIp string) (out *Svc, err error) {
-	i.IpToSvc.RLock()
-	defer i.IpToSvc.RUnlock()
-
-	if svc, ok := i.IpToSvc.Svc[sourceIp]; ok {
-		out = &svc
-		return
+func (i *IpService) FetchSourceSvc(sourceIp string) (*types.NamespacedName, error) {
+	value, ok := i.IpToService.Load(sourceIp)
+	if !ok {
+		return nil, fmt.Errorf("no source service, source ip is %v", sourceIp)
 	}
-	err = fmt.Errorf("no source service, source ip is %v", sourceIp)
-	return
+
+	svc, ok := value.(types.NamespacedName)
+	if !ok {
+		return nil, fmt.Errorf("failed to get source service, source ip is %v", sourceIp)
+	}
+	return &svc, nil
 }
 
 func (i *IpService) FetchDestinationSvc(entry *data_accesslog.HTTPAccessLogEntry) (destSvc string, err error) {
@@ -230,14 +207,10 @@ func (i *IpService) FetchDestinationSvc(entry *data_accesslog.HTTPAccessLogEntry
 }
 
 func (i *IpService) completeDestSvcName(destParts []string, dest, suffix string) (destSvc string) {
-	i.SvcToIps.RLock()
-	defer i.SvcToIps.RUnlock()
-
 	destSvc = dest
 	// destParts: name.namespace.svc.cluster.local
-	svcnn := types.NamespacedName{Namespace: destParts[1], Name: destParts[0]}
-	if _, ok := i.SvcToIps.Ips[svcnn]; ok {
-		// dest is abbreviation of service, add suffix
+	svc := types.NamespacedName{Namespace: destParts[1], Name: destParts[0]}
+	if _, ok := i.ServiceToIps.Load(svc); ok {
 		destSvc = fmt.Sprintf("%v.%v", dest, suffix)
 	}
 	return

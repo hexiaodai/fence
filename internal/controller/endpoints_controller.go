@@ -74,7 +74,7 @@ func (r *EndpointsReconciler) Reconcile(ctx context.Context, request ctrl.Reques
 		return ctrl.Result{}, nil
 	}
 
-	if err := r.Resource.Refresh(ctx, svc); err != nil {
+	if err := r.Resource.RefreshByService(ctx, svc); err != nil {
 		if errors.IsConflict(err) {
 			return ctrl.Result{Requeue: true}, nil
 		}

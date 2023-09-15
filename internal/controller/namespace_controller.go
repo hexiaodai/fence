@@ -79,7 +79,7 @@ func (r *NamespaceReconciler) Reconcile(ctx context.Context, request ctrl.Reques
 			continue
 		}
 
-		if err := r.Resource.Refresh(ctx, &svc); err != nil {
+		if err := r.Resource.RefreshByService(ctx, &svc); err != nil {
 			if errors.IsConflict(err) {
 				log.Sugar().Debugw(err.Error(), "namespaceName", nn)
 				return ctrl.Result{Requeue: true}, nil
