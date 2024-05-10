@@ -4,7 +4,7 @@ Fence is an open source project to automate the management of Istio custom resou
 
 ## Backgroud
 
-When there are too many services in the Service Grid, the Envoy configuration is too large and new applications remain in Not Ready state for a long time. For this reason, Ops needs to manage the custom resource `Sidecar` and manually configure service dependencies for the application.
+When there are too many services in the Service Mesh, the Envoy configuration is too large and new applications remain in Not Ready state for a long time. For this reason, Ops needs to manage the custom resource `Sidecar` and manually configure service dependencies for the application.
 
 Fence has the ability to automatically fetch service dependencies and provide automatic management of the custom resource `Sidecar`.
 
