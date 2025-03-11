@@ -1,30 +1,30 @@
-# Fence（[中文](./README.zh-CN.md)）
+# Fence（[English](./README.en.md)）
 
-Fence is an open source project to automate the management of Istio custom resources `Sidecar`.
+Fence 是一个开源项目，用于自动管理 Istio 自定义资源 `Sidecar`。
 
-## Backgroud
+## 背景
 
-When there are too many services in the Service Mesh, the Envoy configuration is too large and new applications remain in Not Ready state for a long time. For this reason, Ops needs to manage the custom resource `Sidecar` and manually configure service dependencies for the application.
+服务网格内服务数量过多时，Envoy 配置量太大，新上的应用长时间处于 Not Ready 状态。为此运维人员需要管理自定义资源 `Sidecar`，手动为应用配置服务依赖关系。
 
-Fence has the ability to automatically fetch service dependencies and provide automatic management of the custom resource `Sidecar`.
+Fence 拥有自动获取服务依赖关系的能力，提供自动管理自定义资源 `Sidecar`。
 
-## Architecture
+## 架构
 
-![architecture](docs/images/fence-english.png)
+![架构图](docs/images/fence.png)
 
-## Performance Indicator
+## 性能指标
 
-In a Kubenetes cluster with 250 pods, the `XDS Response Bytes Max` peaks at 450 kB/s and the `Proxy Push Time` peaks at 20s before Fence is enabled, and the `XDS Response Bytes Max` peaks at 27 kB/s and the `Proxy Push Time` peaks at 5s after Fence is enabled. In summary, enabling Fence to automatically manage Sidecar resources reduces the `XDS Response Bytes Max` peak by about 94% and the `Proxy Push Time` peak by about 75%.
+在 Kubenetes 集群中部署 250 个 Pod。启用 Fence 前 `XDS Response Bytes Max` 峰值 450 kB/s，`Proxy Push Time` 峰值 20s；启用 Fence 后 `XDS Response Bytes Max` 峰值 27 kB/s，`Proxy Push Time` 峰值 5s。综上，启用 Fence 自动管理 Sidecar 资源后 `XDS Response Bytes Max` 的峰值减少了约 94%，`Proxy Push Time` 的峰值减少了约 75%。
 
-**Before Fence is enabled**
+**启用 Fence 前**
 
 ![xds requests size](docs/images/xds-requests-size-and-proxy-push-time.png)
 
-**After Fence is enabled**
+**启用 Fence 后**
 
 ![xds requests size](docs/images/xds-requests-size-2-and-proxy-push-time-2.png)
 
-## Install & Use
+## 安装和使用
 
 **Use kubectl**
 
@@ -39,30 +39,30 @@ kubectl apply -f "https://raw.githubusercontent.com/hexiaodai/fence/0.1.0/deploy
 helm install fence --create-namespace -n fence oci://registry-1.docker.io/hejianmin/chart-fence --version 0.1.0
 ```
 
-**Fence has two ways to automate the management of custom resource Sidecars in a cluster:**
+**Fence 有两种自动管理集群中自定义资源 Sidecar 的方式：**
 
-> Note: Fence does not manage Sidecar in the system namespace `kube-system`, `istio-system`.
+> 注意：Fence 不会管理系统名称空间 `kube-system`、`istio-system` 下的 Sidecar。
 
-- Manage the entire cluster, this is the default behavior
+- 管理整个集群，这是默认行为
 
 ```shell
 kubectl -n fence set env deployment/fence AUTO_FENCE="true"
 ```
 
-- Specify a Namespace or Pod to manage
+- 指定需要管理的 Namespace 或 Pod
 
 ```shell
 kubectl -n fence set env deployment/fence AUTO_FENCE="false"
-# Namespace
+# 名称空间
 kubectl label namespace ${namespace name} sidecar.fence.io=enabled
 # Pod
 kubectl label pods ${pod name} sidecar.fence.io=enabled
 ```
 
-- Specify a Namespace or Pod that does not need to be managed
+- 指定不需要管理的 Namespace 或 Pod
 
 ```shell
-# Namespace
+# 名称空间
 kubectl label namespace ${namespace name} sidecar.fence.io=disable
 # Pod
 kubectl label pods ${pod name} sidecar.fence.io=disable
